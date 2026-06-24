@@ -214,18 +214,13 @@ ${jdText}`
       y += 6
     }
 
-    // Name
     addText(fullRewrite.name || 'Resume', 22, true, [0, 0, 0])
     addLine()
-
-    // Summary
     addText('PROFESSIONAL SUMMARY', 11, true, [80, 80, 80])
     y += 2
     addText(fullRewrite.summary || '', 10, false, [40, 40, 40])
     y += 4
     addLine()
-
-    // Experience
     addText('EXPERIENCE', 11, true, [80, 80, 80])
     y += 2
     ;(fullRewrite.experience || []).forEach(exp => {
@@ -237,8 +232,6 @@ ${jdText}`
       y += 4
     })
     addLine()
-
-    // Education
     addText('EDUCATION', 11, true, [80, 80, 80])
     y += 2
     ;(fullRewrite.education || []).forEach(edu => {
@@ -247,12 +240,9 @@ ${jdText}`
       y += 4
     })
     addLine()
-
-    // Skills
     addText('SKILLS', 11, true, [80, 80, 80])
     y += 2
     addText((fullRewrite.skills || []).join(' • '), 10, false, [40, 40, 40])
-
     doc.save(`${fullRewrite.name || 'resume'}_careergenie.pdf`)
   }
 
@@ -271,6 +261,23 @@ ${jdText}`
   return (
     <div style={{ minHeight: '100vh', background: '#05050a', color: '#fff' }}>
 
+      <style>{`
+        @media (max-width: 768px) {
+          .analyze-nav { padding: 14px 20px !important; }
+          .analyze-main { padding: 24px 16px !important; }
+          .analyze-h1 { font-size: 26px !important; letter-spacing: -1px !important; }
+          .analyze-grid { grid-template-columns: 1fr !important; }
+          .btn-row { grid-template-columns: 1fr !important; }
+          .score-grid { grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; }
+          .score-number { font-size: 32px !important; letter-spacing: -1px !important; }
+          .score-card { padding: 16px 10px !important; }
+          .tabs-row { flex-wrap: wrap !important; gap: 4px !important; }
+          .tab-btn { font-size: 11px !important; padding: 8px 6px !important; }
+          .tab-content { padding: 16px !important; }
+          .download-row { flex-direction: column !important; gap: 12px !important; }
+        }
+      `}</style>
+
       {/* Gradient orbs */}
       <div style={{
         position: 'fixed', top: '-200px', right: '-200px',
@@ -286,7 +293,7 @@ ${jdText}`
       }} />
 
       {/* Navbar */}
-      <nav style={{
+      <nav className="analyze-nav" style={{
         position: 'sticky', top: 0, zIndex: 100,
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         padding: '18px 60px',
@@ -309,11 +316,11 @@ ${jdText}`
         }}>Pricing</button>
       </nav>
 
-      <div style={{ position: 'relative', zIndex: 1, maxWidth: '960px', margin: '0 auto', padding: '48px 24px' }}>
+      <div className="analyze-main" style={{ position: 'relative', zIndex: 1, maxWidth: '960px', margin: '0 auto', padding: '48px 24px' }}>
 
         {/* Header */}
         <div style={{ marginBottom: '40px' }}>
-          <h1 style={{
+          <h1 className="analyze-h1" style={{
             fontSize: '40px', fontWeight: '900', letterSpacing: '-1.5px', marginBottom: '10px',
             background: 'linear-gradient(180deg, #ffffff 40%, rgba(255,255,255,0.5) 100%)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
@@ -324,7 +331,7 @@ ${jdText}`
         </div>
 
         {/* Input Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+        <div className="analyze-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
 
           {/* Resume Input */}
           <div style={{
@@ -345,22 +352,28 @@ ${jdText}`
               border: '1px dashed rgba(245,197,24,0.3)',
               borderRadius: '10px', padding: '12px 16px',
               cursor: 'pointer', marginBottom: '12px',
-              transition: 'all 0.2s'
+              transition: 'all 0.2s', position: 'relative',
+              WebkitTapHighlightColor: 'transparent',
+              touchAction: 'manipulation'
             }}>
               <span style={{ fontSize: '20px' }}>📎</span>
-              <div>
+              <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '13px', fontWeight: '700', color: '#f5c518' }}>
                   {pdfLoading ? 'Reading PDF...' : uploadedFileName ? uploadedFileName : 'Upload PDF resume'}
                 </div>
                 <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: '2px' }}>
-                  {uploadedFileName ? 'Text extracted successfully ✓' : 'Click to upload — PDF files only'}
+                  {uploadedFileName ? 'Text extracted successfully ✓' : 'Tap to upload — PDF files only'}
                 </div>
               </div>
               <input
                 type='file'
                 accept='application/pdf'
                 onChange={handlePDFUpload}
-                style={{ display: 'none' }}
+                style={{
+                  position: 'absolute', opacity: 0,
+                  width: '100%', height: '100%',
+                  top: 0, left: 0, cursor: 'pointer'
+                }}
               />
             </label>
 
@@ -417,7 +430,7 @@ ${jdText}`
         )}
 
         {/* Buttons Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', marginBottom: '48px' }}>
+        <div className="btn-row" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', marginBottom: '48px' }}>
           <button
             onClick={handleAnalyze}
             disabled={loading}
@@ -455,19 +468,19 @@ ${jdText}`
           <div>
 
             {/* Score Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '32px' }}>
+            <div className="score-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '32px' }}>
               {[
                 { label: 'Match Score', value: results.matchScore },
                 { label: 'ATS Score', value: results.atsScore },
                 { label: 'Readability', value: results.readabilityScore },
               ].map((s, i) => (
-                <div key={i} style={{
+                <div className="score-card" key={i} style={{
                   background: 'rgba(255,255,255,0.03)',
                   border: `1px solid ${scoreGlow(s.value).replace('0.3', '0.2')}`,
                   borderRadius: '20px', padding: '28px 20px', textAlign: 'center',
                   boxShadow: `0 0 40px ${scoreGlow(s.value)}`
                 }}>
-                  <div style={{
+                  <div className="score-number" style={{
                     fontSize: '52px', fontWeight: '900', letterSpacing: '-3px',
                     color: scoreColor(s.value), lineHeight: '1'
                   }}>{s.value}%</div>
@@ -483,14 +496,14 @@ ${jdText}`
             </div>
 
             {/* Tabs */}
-            <div style={{
+            <div className="tabs-row" style={{
               display: 'flex', gap: '6px', marginBottom: '24px',
               background: 'rgba(255,255,255,0.03)',
               border: '1px solid rgba(255,255,255,0.07)',
               borderRadius: '14px', padding: '6px'
             }}>
               {tabs.map(tab => (
-                <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                <button className="tab-btn" key={tab} onClick={() => setActiveTab(tab)} style={{
                   flex: 1, padding: '10px 16px',
                   background: activeTab === tab
                     ? tab === 'fullrewrite' ? 'rgba(139,92,246,0.15)' : 'rgba(245,197,24,0.12)'
@@ -509,7 +522,7 @@ ${jdText}`
             </div>
 
             {/* Tab Content */}
-            <div style={{
+            <div className="tab-content" style={{
               background: 'rgba(255,255,255,0.02)',
               border: '1px solid rgba(255,255,255,0.07)',
               borderRadius: '20px', padding: '28px'
@@ -622,7 +635,7 @@ ${jdText}`
               {/* Full Rewrite Tab */}
               {activeTab === 'fullrewrite' && fullRewrite && (
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                  <div className="download-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#a78bfa' }} />
                       <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#fff', margin: 0 }}>
@@ -633,26 +646,19 @@ ${jdText}`
                       background: 'linear-gradient(135deg, #f5c518, #e8a200)',
                       color: '#000', border: 'none', padding: '10px 20px',
                       borderRadius: '10px', fontSize: '13px', fontWeight: '800',
-                      cursor: 'pointer'
+                      cursor: 'pointer', whiteSpace: 'nowrap'
                     }}>⬇ Download PDF</button>
                   </div>
 
-                  {/* Name */}
-                  <div style={{
-                    fontSize: '24px', fontWeight: '900', color: '#fff',
-                    letterSpacing: '-0.5px', marginBottom: '4px'
-                  }}>{fullRewrite.name}</div>
+                  <div style={{ fontSize: '24px', fontWeight: '900', color: '#fff', letterSpacing: '-0.5px', marginBottom: '4px' }}>
+                    {fullRewrite.name}
+                  </div>
 
-                  {/* Summary */}
-                  <div style={{
-                    borderTop: '1px solid rgba(255,255,255,0.08)',
-                    paddingTop: '16px', marginTop: '16px', marginBottom: '20px'
-                  }}>
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', marginTop: '16px', marginBottom: '20px' }}>
                     <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '10px' }}>PROFESSIONAL SUMMARY</div>
                     <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.7', margin: 0 }}>{fullRewrite.summary}</p>
                   </div>
 
-                  {/* Experience */}
                   <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', marginBottom: '20px' }}>
                     <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '16px' }}>EXPERIENCE</div>
                     {(fullRewrite.experience || []).map((exp, i) => (
@@ -673,7 +679,6 @@ ${jdText}`
                     ))}
                   </div>
 
-                  {/* Education */}
                   <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', marginBottom: '20px' }}>
                     <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '16px' }}>EDUCATION</div>
                     {(fullRewrite.education || []).map((edu, i) => (
@@ -684,7 +689,6 @@ ${jdText}`
                     ))}
                   </div>
 
-                  {/* Skills */}
                   <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', marginBottom: '20px' }}>
                     <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '12px' }}>SKILLS</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -698,7 +702,6 @@ ${jdText}`
                     </div>
                   </div>
 
-                  {/* What improved */}
                   <div style={{
                     background: 'rgba(34,197,94,0.06)',
                     border: '1px solid rgba(34,197,94,0.15)',
@@ -706,15 +709,12 @@ ${jdText}`
                   }}>
                     <div style={{ fontSize: '12px', fontWeight: '800', color: '#4ade80', letterSpacing: '1px', marginBottom: '10px' }}>WHAT WE IMPROVED</div>
                     {(fullRewrite.improvements || []).map((imp, i) => (
-                      <div key={i} style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '6px' }}>
-                        ✓ {imp}
-                      </div>
+                      <div key={i} style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '6px' }}>✓ {imp}</div>
                     ))}
                   </div>
 
                 </div>
               )}
-
             </div>
 
             {/* Analyze Again */}
