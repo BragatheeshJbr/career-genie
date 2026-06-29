@@ -51,13 +51,13 @@ function Pricing() {
         background: 'rgba(10,10,15,0.85)', backdropFilter: 'blur(20px)',
         position: 'sticky', top: 0, zIndex: 100
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }} onClick={() => navigate('/')}>
-          <div style={{
-            width: '32px', height: '32px',
-            background: 'linear-gradient(135deg, #f5c518, #e8a200)',
-            borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px'
-          }}>✨</div>
-          <span style={{ fontSize: '18px', fontWeight: '700', letterSpacing: '-0.3px' }}>Career Genie</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img
+            src="/src/assets/genie-icon.png"
+            alt="Career Genie"
+            style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', objectPosition: 'center top' }}
+          />
+          <span style={{ fontSize: '17px', fontWeight: '800', letterSpacing: '-0.5px' }}>Career Genie</span>
         </div>
         <button onClick={() => navigate('/analyze')} style={{
           background: 'linear-gradient(135deg, #f5c518, #e8a200)',

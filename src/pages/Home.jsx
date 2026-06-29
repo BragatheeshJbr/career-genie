@@ -85,13 +85,11 @@ function Home() {
         borderBottom: '1px solid rgba(255,255,255,0.05)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: '34px', height: '34px',
-            background: 'linear-gradient(135deg, #f5c518, #e8a200)',
-            borderRadius: '9px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '16px', fontWeight: '800', color: '#000'
-          }}>G</div>
+          <img
+            src="/src/assets/genie-icon.png"
+            alt="Career Genie"
+            style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', objectPosition: 'center top' }}
+          />
           <span style={{ fontSize: '17px', fontWeight: '800', letterSpacing: '-0.5px' }}>Career Genie</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
