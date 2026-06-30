@@ -326,14 +326,13 @@ function Home() {
         padding: '32px 60px',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{
-            width: '28px', height: '28px',
-            background: 'linear-gradient(135deg, #f5c518, #e8a200)',
-            borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '13px', fontWeight: '800', color: '#000'
-          }}>G</div>
-          <span style={{ fontSize: '14px', fontWeight: '700' }}>Career Genie</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img
+            src={genieIcon}
+            alt="Career Genie"
+            style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', objectPosition: 'center top' }}
+          />
+          <span style={{ fontSize: '17px', fontWeight: '800', letterSpacing: '-0.5px' }}>Career Genie</span>
         </div>
         <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.2)' }}>Built for Indian students and freshers</span>
       </div>
