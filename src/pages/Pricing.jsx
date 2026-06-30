@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import genieIcon from '../assets/genie-icon.png'
 
 function Pricing() {
   const navigate = useNavigate()
@@ -53,7 +54,7 @@ function Pricing() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <img
-            src="/src/assets/genie-icon.png"
+            src={genieIcon}
             alt="Career Genie"
             style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', objectPosition: 'center top' }}
           />
