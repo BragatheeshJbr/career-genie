@@ -99,6 +99,14 @@ function Home() {
             border: '1px solid rgba(255,255,255,0.1)', padding: '9px 20px',
             borderRadius: '9px', cursor: 'pointer', fontSize: '14px', fontWeight: '500'
           }}>Pricing</button>
+          <button onClick={() => navigate('/jobs')} style={{
+            background: 'rgba(139,92,246,0.15)',
+            color: '#a78bfa',
+            border: '1px solid rgba(139,92,246,0.3)',
+            padding: '9px 20px',
+            borderRadius: '9px', cursor: 'pointer',
+            fontSize: '14px', fontWeight: '700'
+          }}>🚀 Job Finder</button>
           <button onClick={() => navigate('/analyze')} style={{
             background: 'linear-gradient(135deg, #f5c518, #e8a200)',
             color: '#000', border: 'none', padding: '10px 24px',
@@ -157,6 +165,16 @@ function Home() {
             boxShadow: '0 0 40px rgba(245,197,24,0.3)'
           }}>
             Analyze my resume →
+          </button>
+          <button onClick={() => navigate('/jobs')} style={{
+            background: 'rgba(139,92,246,0.15)',
+            color: '#a78bfa',
+            border: '1px solid rgba(139,92,246,0.3)',
+            padding: '10px 20px',
+            borderRadius: '9px', cursor: 'pointer',
+            fontSize: '14px', fontWeight: '700'
+          }}>
+            🚀 Job Finder
           </button>
           <button onClick={() => navigate('/pricing')} style={{
             background: 'rgba(255,255,255,0.05)',
