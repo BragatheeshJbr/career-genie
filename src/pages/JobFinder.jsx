@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { extractTextFromPDF } from '../pdfUtils'
 import genieIcon from '../assets/genie-icon.png'
+import { useAuth } from '../useAuth'
 
 function JobFinder() {
   const navigate = useNavigate()
@@ -14,6 +15,7 @@ function JobFinder() {
   const [profile, setProfile] = useState(null)
   const [error, setError] = useState('')
   const [searched, setSearched] = useState(false)
+  const { user, signOut } = useAuth()
 
   const handlePDFUpload = async (e) => {
     const file = e.target.files[0]
@@ -183,15 +185,53 @@ ${resume}`
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={() => navigate('/analyze')} style={{
-            background: 'transparent', color: 'rgba(255,255,255,0.5)',
+            background: 'rgba(255, 247, 0, 0.66)', color: 'rgb(10, 0, 0)',
             border: '1px solid rgba(255,255,255,0.1)', padding: '9px 20px',
-            borderRadius: '9px', cursor: 'pointer', fontSize: '14px', fontWeight: '500'
+            borderRadius: '9px', cursor: 'pointer', fontSize: '14px', fontWeight: '700'
           }}>Analyze Resume</button>
           <button onClick={() => navigate('/pricing')} style={{
             background: 'transparent', color: 'rgba(255,255,255,0.5)',
             border: '1px solid rgba(255,255,255,0.1)', padding: '9px 20px',
             borderRadius: '9px', cursor: 'pointer', fontSize: '14px', fontWeight: '500'
           }}>Pricing</button>
+          {user ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                padding: '8px 14px', borderRadius: '9px'
+              }}>
+                <div style={{
+                  width: '24px', height: '24px', borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #f5c518, #e8a200)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '12px', fontWeight: '800', color: '#000'
+                }}>
+                  {user.email[0].toUpperCase()}
+                </div>
+                <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>
+                  {user.email.split('@')[0]}
+                </span>
+              </div>
+              <button
+                onClick={async () => { await signOut(); navigate('/') }}
+                style={{
+                  background: 'transparent', color: 'rgba(255,255,255,0.4)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  padding: '9px 16px', borderRadius: '9px',
+                  cursor: 'pointer', fontSize: '13px'
+                }}>
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => navigate('/login')} style={{
+              background: 'linear-gradient(135deg, #f5c518, #e8a200)',
+              color: '#000', border: 'none', padding: '9px 20px',
+              borderRadius: '9px', cursor: 'pointer', fontSize: '14px', fontWeight: '800'
+            }}>Sign in</button>
+          )}
         </div>
       </nav>
 

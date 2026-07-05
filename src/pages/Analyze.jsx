@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { extractTextFromPDF } from '../pdfUtils'
 import jsPDF from 'jspdf'
 import genieIcon from '../assets/genie-icon.png'
+import { useAuth } from '../useAuth'
 
 function Analyze() {
   const navigate = useNavigate()
@@ -16,6 +17,7 @@ function Analyze() {
   const [activeTab, setActiveTab] = useState('keywords')
   const [uploadedFileName, setUploadedFileName] = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
+  const { user, signOut } = useAuth()
 
   const handlePDFUpload = async (e) => {
     const file = e.target.files[0]
@@ -301,19 +303,60 @@ ${jdText}`
         background: 'rgba(5,5,10,0.8)', backdropFilter: 'blur(24px)',
         borderBottom: '1px solid rgba(255,255,255,0.05)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <img
-            src={genieIcon}
-            alt="Career Genie"
-            style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', objectPosition: 'center top' }}
-          />
+        <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+          <img src={genieIcon} alt="Career Genie" style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', objectPosition: 'center top' }} />
           <span style={{ fontSize: '17px', fontWeight: '800', letterSpacing: '-0.5px' }}>Career Genie</span>
         </div>
-        <button onClick={() => navigate('/pricing')} style={{
-          background: 'transparent', color: 'rgba(255,255,255,0.5)',
-          border: '1px solid rgba(255,255,255,0.1)', padding: '9px 20px',
-          borderRadius: '9px', cursor: 'pointer', fontSize: '14px', fontWeight: '500'
-        }}>Pricing</button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button onClick={() => navigate('/jobs')} style={{
+            background: 'rgba(139,92,246,0.15)', color: '#a78bfa',
+            border: '1px solid rgba(139,92,246,0.3)', padding: '9px 20px',
+            borderRadius: '9px', cursor: 'pointer', fontSize: '14px', fontWeight: '700'
+          }}>🚀 Job Finder</button>
+          <button onClick={() => navigate('/pricing')} style={{
+            background: 'transparent', color: 'rgba(255,255,255,0.5)',
+            border: '1px solid rgba(255,255,255,0.1)', padding: '9px 20px',
+            borderRadius: '9px', cursor: 'pointer', fontSize: '14px', fontWeight: '500'
+          }}>Pricing</button>
+          {user ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                padding: '8px 14px', borderRadius: '9px'
+              }}>
+                <div style={{
+                  width: '24px', height: '24px', borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #f5c518, #e8a200)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '12px', fontWeight: '800', color: '#000'
+                }}>
+                  {user.email[0].toUpperCase()}
+                </div>
+                <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>
+                  {user.email.split('@')[0]}
+                </span>
+              </div>
+              <button
+                onClick={async () => { await signOut(); navigate('/') }}
+                style={{
+                  background: 'transparent', color: 'rgba(255,255,255,0.4)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  padding: '9px 16px', borderRadius: '9px',
+                  cursor: 'pointer', fontSize: '13px'
+                }}>
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => navigate('/login')} style={{
+              background: 'linear-gradient(135deg, #f5c518, #e8a200)',
+              color: '#000', border: 'none', padding: '9px 20px',
+              borderRadius: '9px', cursor: 'pointer', fontSize: '14px', fontWeight: '800'
+            }}>Sign in</button>
+          )}
+        </div>
       </nav>
 
       <div className="analyze-main" style={{ position: 'relative', zIndex: 1, maxWidth: '960px', margin: '0 auto', padding: '48px 24px' }}>
