@@ -1,10 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { extractTextFromPDF } from '../pdfUtils'
-import jsPDF from 'jspdf'
 import genieIcon from '../assets/genie-icon.png'
 import { useAuth } from '../useAuth'
-import { openRazorpay, PLANS } from '../payment'
 import { supabase } from '../supabase'
 
 function Analyze() {
@@ -49,23 +47,47 @@ function Analyze() {
   }
 
   const checkAndUpdateLimit = async () => {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('analyses_today, last_analysis_date')
-      .eq('id', user.id)
-      .single()
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('analyses_today, last_analysis_date')
+        .eq('id', user.id)
+        .single()
 
-    if (profile) {
+      if (error || !profile) {
+        await supabase.from('profiles').insert({
+          id: user.id,
+          email: user.email,
+          plan: 'free',
+          analyses_today: 1,
+          last_analysis_date: new Date().toISOString().split('T')[0]
+        })
+        return true
+      }
+
       const today = new Date().toISOString().split('T')[0]
       const lastDate = profile.last_analysis_date
-      if (lastDate === today && profile.analyses_today >= 3) return false
-      const newCount = lastDate === today ? profile.analyses_today + 1 : 1
+
+      if (lastDate !== today) {
+        await supabase
+          .from('profiles')
+          .update({ analyses_today: 1, last_analysis_date: today })
+          .eq('id', user.id)
+        return true
+      }
+
+      if (profile.analyses_today >= 3) return false
+
       await supabase
         .from('profiles')
-        .update({ analyses_today: newCount, last_analysis_date: today })
+        .update({ analyses_today: profile.analyses_today + 1 })
         .eq('id', user.id)
+      return true
+
+    } catch (err) {
+      console.error('Limit check failed:', err)
+      return true
     }
-    return true
   }
 
   const saveAnalysis = async (parsed, jd) => {
@@ -97,7 +119,6 @@ function Analyze() {
     }
 
     setError('')
-
     const allowed = await checkAndUpdateLimit()
     if (!allowed) {
       setError('🔒 You have used your 3 free analyses for today. Come back tomorrow or upgrade for unlimited access.')
@@ -170,40 +191,57 @@ ${jdText}`
     setRewriting(true)
     setError('')
     try {
-      const prompt = `Rewrite the entire resume to perfectly match the job description. Return ONLY valid JSON with no markdown no backticks:
+      const prompt = `Rewrite the entire resume to perfectly match the job description. Return ONLY valid JSON no markdown no backticks:
 {
   "name": "<candidate full name>",
-  "email": "<email address from resume — exact>",
-  "phone": "<phone number from resume — exact>",
-  "linkedin": "<linkedin URL or profile from resume if present else empty string>",
-  "location": "<city and state from resume if present else empty string>",
-  "summary": "<rewritten professional summary — 3 sentences strong and specific>",
+  "email": "<email from resume exact>",
+  "phone": "<phone from resume exact>",
+  "linkedin": "<linkedin URL from resume if present else empty string>",
+  "location": "<city from resume if present else empty string>",
+  "summary": "<rewritten professional summary — 3 strong specific sentences>",
   "experience": [
     {
       "company": "<company name>",
       "role": "<job title>",
       "duration": "<e.g. Jan 2023 – Present>",
-      "bullets": ["<strong action verb led bullet with metric>", "<bullet 2>", "<bullet 3>"]
+      "location": "<city if available else empty string>",
+      "bullets": ["<action verb led quantified bullet>", "<bullet 2>", "<bullet 3>"]
     }
   ],
   "education": [
     {
-      "degree": "<full degree name>",
+      "degree": "<full degree name and specialisation>",
       "institution": "<institution name>",
-      "year": "<graduation year>",
-      "score": "<GPA or percentage if available>"
+      "year": "<e.g. Aug 2020 – June 2024>",
+      "score": "<CGPA or percentage if available>",
+      "location": "<city if available else empty string>"
     }
   ],
+  "projects": [
+    {
+      "name": "<project name>",
+      "tech": "<tech stack used>",
+      "duration": "<duration if available>",
+      "bullets": ["<what was built and impact>", "<bullet 2>"]
+    }
+  ],
+  "achievements": ["<certification or achievement 1>", "<certification or achievement 2>"],
   "skills": ["<skill 1>", "<skill 2>", "<skill 3>", "<skill 4>", "<skill 5>", "<skill 6>", "<skill 7>", "<skill 8>"],
-  "improvements": ["<what was improved 1>", "<what was improved 2>", "<what was improved 3>"]
+  "skillCategories": [
+    {"label": "<e.g. Programming Languages>", "items": ["<skill 1>", "<skill 2>"]},
+    {"label": "<e.g. Frameworks>", "items": ["<skill 1>", "<skill 2>"]},
+    {"label": "<e.g. Tools>", "items": ["<skill 1>", "<skill 2>"]}
+  ],
+  "improvements": ["<improvement 1>", "<improvement 2>", "<improvement 3>"]
 }
 
 Rules:
-- Keep all real experience — do not fabricate anything
+- Extract ALL sections present in resume including projects and certifications
+- Keep all real experience — do not fabricate
 - Rewrite bullets to be quantified action verb led and keyword rich
 - Add missing keywords from JD naturally
-- Rewrite summary to match the role
-- Extract contact details exactly as they appear in resume
+- Extract contact details exactly as they appear
+- Group skills logically by type in skillCategories
 
 RESUME:
 ${resumeText}
@@ -274,7 +312,6 @@ ${jdText}`
   "finalOutcome": "<4 week outcome>",
   "quickWins": ["<win 1>", "<win 2>", "<win 3>"]
 }
-
 RESUME: ${resumeText}
 JOB DESCRIPTION: ${jdText}
 MISSING KEYWORDS: ${results?.missingKeywords?.join(', ')}`
@@ -317,30 +354,24 @@ MISSING KEYWORDS: ${results?.missingKeywords?.join(', ')}`
       const prompt = `Generate likely interview questions. Return ONLY valid JSON no markdown no backticks:
 {
   "role": "<job title>",
-  "totalQuestions": 10,
   "categories": [
     {
-      "name": "<category e.g. Technical, Behavioural, Role Specific>",
+      "name": "<category>",
       "questions": [
         {
           "question": "<interview question>",
           "why": "<why interviewers ask this>",
-          "tip": "<how to answer it well>",
-          "sampleAnswer": "<brief sample answer structure>"
+          "tip": "<how to answer>",
+          "sampleAnswer": "<brief sample structure>"
         }
       ]
     }
   ],
   "gapQuestions": [
-    {
-      "question": "<question about a gap in resume vs JD>",
-      "how": "<how to handle this question honestly>"
-    }
+    {"question": "<gap question>", "how": "<how to handle>"}
   ]
 }
-
 3 categories with 3 questions each. 2 gap questions.
-
 RESUME: ${resumeText}
 JOB DESCRIPTION: ${jdText}
 MISSING KEYWORDS: ${results?.missingKeywords?.join(', ')}`
@@ -382,14 +413,13 @@ MISSING KEYWORDS: ${results?.missingKeywords?.join(', ')}`
     try {
       const prompt = `Write a professional cover letter. Return ONLY valid JSON no markdown no backticks:
 {
-  "candidateName": "<name from resume>",
-  "role": "<job title from JD>",
-  "company": "<company name from JD if available else Target Company>",
+  "candidateName": "<name>",
+  "role": "<job title>",
+  "company": "<company name if available else Target Company>",
   "subject": "<email subject line>",
-  "letter": "<full cover letter — 3 to 4 paragraphs, honest specific not generic, 250 to 300 words>",
+  "letter": "<full cover letter 3 to 4 paragraphs honest specific 250 to 300 words>",
   "keyPoints": ["<strength 1>", "<strength 2>", "<strength 3>"]
 }
-
 RESUME: ${resumeText}
 JOB DESCRIPTION: ${jdText}`
 
@@ -424,214 +454,240 @@ JOB DESCRIPTION: ${jdText}`
 
   const handleDownloadPDF = () => {
     if (!fullRewrite) return
-    const doc = new jsPDF({ unit: 'pt', format: 'a4' })
-    const pageWidth = doc.internal.pageSize.getWidth()
-    const pageHeight = doc.internal.pageSize.getHeight()
-    const margin = 45
-    const contentWidth = pageWidth - margin * 2
-    let y = 48
 
-    const colors = {
-      black: [15, 15, 15],
-      darkGray: [55, 55, 55],
-      midGray: [100, 100, 100],
-      lightGray: [160, 160, 160],
-      accent: [30, 80, 160],
-      accentLight: [240, 244, 255],
-      accentBorder: [200, 215, 245],
-      divider: [220, 220, 220]
-    }
+    const rawName = fullRewrite.name || 'Your Name'
+    const nameFmt = rawName.split(' ')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ')
 
-    const checkPage = (neededSpace = 40) => {
-      if (y + neededSpace > pageHeight - 40) {
-        doc.addPage()
-        y = 48
-      }
-    }
-
-    const setFont = (size, style = 'normal', color = colors.black) => {
-      doc.setFontSize(size)
-      doc.setFont('helvetica', style)
-      doc.setTextColor(...color)
-    }
-
-    const addSectionHeader = (text) => {
-      checkPage(32)
-      y += 6
-      setFont(8, 'bold', colors.accent)
-      doc.setCharSpace(1.8)
-      doc.text(text.toUpperCase(), margin, y)
-      doc.setCharSpace(0)
-      y += 7
-      doc.setDrawColor(...colors.accent)
-      doc.setLineWidth(1.5)
-      doc.line(margin, y, margin + 30, y)
-      doc.setDrawColor(...colors.divider)
-      doc.setLineWidth(0.4)
-      doc.line(margin + 32, y, pageWidth - margin, y)
-      y += 13
-    }
-
-    // ─── NAME ───
-    setFont(24, 'bold', colors.black)
-    doc.text(fullRewrite.name || 'Your Name', margin, y)
-    y += 12
-
-    // ─── CONTACT LINE ───
     const contactParts = [
-      fullRewrite.email,
       fullRewrite.phone,
+      fullRewrite.email,
       fullRewrite.linkedin,
       fullRewrite.location
     ].filter(Boolean)
 
-    if (contactParts.length > 0) {
-      setFont(8.5, 'normal', colors.midGray)
-      const contactStr = contactParts.join('  ·  ')
-      doc.text(contactStr, margin, y)
-      y += 5
+    const html = `<!DOCTYPE html>
+  <html>
+  <head>
+  <meta charset="UTF-8">
+  <title>${nameFmt} — Resume</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      font-family: 'Times New Roman', Times, serif;
+      font-size: 10.5pt;
+      color: #111;
+      background: #fff;
+      width: 210mm;
+      margin: 0 auto;
     }
-
-    // Top divider
-    y += 4
-    doc.setDrawColor(...colors.accent)
-    doc.setLineWidth(1.5)
-    doc.line(margin, y, pageWidth - margin, y)
-    y += 14
-
-    // ─── SUMMARY ───
-    if (fullRewrite.summary) {
-      addSectionHeader('Professional Summary')
-      setFont(9.5, 'normal', colors.darkGray)
-      const summaryLines = doc.splitTextToSize(fullRewrite.summary, contentWidth)
-      summaryLines.forEach(line => {
-        checkPage(14)
-        doc.text(line, margin, y)
-        y += 13.5
-      })
-      y += 8
+    .page {
+      width: 210mm;
+      padding: 18mm 18mm 28mm 18mm;
     }
-
-    // ─── EXPERIENCE ───
-    if (fullRewrite.experience && fullRewrite.experience.length > 0) {
-      addSectionHeader('Experience')
-      fullRewrite.experience.forEach((exp, i) => {
-        checkPage(55)
-
-        // Role name
-        setFont(10.5, 'bold', colors.black)
-        doc.text(exp.role || '', margin, y)
-
-        // Duration right aligned
-        if (exp.duration) {
-          setFont(8.5, 'normal', colors.lightGray)
-          const durWidth = doc.getTextWidth(exp.duration)
-          doc.text(exp.duration, pageWidth - margin - durWidth, y)
-        }
-        y += 13
-
-        // Company in accent italic
-        setFont(9.5, 'italic', colors.accent)
-        doc.text(exp.company || '', margin, y)
-        y += 13
-
-        // Bullets
-        ;(exp.bullets || []).forEach(bullet => {
-          checkPage(16)
-          setFont(9.5, 'normal', colors.darkGray)
-          const bulletText = '•  ' + (bullet.startsWith('•') ? bullet.substring(1).trim() : bullet)
-          const bulletLines = doc.splitTextToSize(bulletText, contentWidth - 12)
-          bulletLines.forEach((line, li) => {
-            checkPage(14)
-            doc.text(line, margin + (li > 0 ? 10 : 0), y)
-            y += 13
-          })
-          y += 1
-        })
-
-        if (i < fullRewrite.experience.length - 1) {
-          y += 4
-          doc.setDrawColor(...colors.divider)
-          doc.setLineWidth(0.3)
-          doc.line(margin, y, pageWidth - margin, y)
-          y += 10
-        } else {
-          y += 6
-        }
-      })
+    .name {
+      text-align: center;
+      font-size: 22pt;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      margin-bottom: 5px;
     }
-
-    // ─── EDUCATION ───
-    if (fullRewrite.education && fullRewrite.education.length > 0) {
-      addSectionHeader('Education')
-      fullRewrite.education.forEach((edu, i) => {
-        checkPage(38)
-
-        setFont(10.5, 'bold', colors.black)
-        doc.text(edu.degree || '', margin, y)
-
-        if (edu.year) {
-          setFont(8.5, 'normal', colors.lightGray)
-          const yearWidth = doc.getTextWidth(edu.year)
-          doc.text(edu.year, pageWidth - margin - yearWidth, y)
-        }
-        y += 13
-
-        setFont(9.5, 'normal', colors.midGray)
-        const instLine = [edu.institution, edu.score].filter(Boolean).join('  ·  ')
-        doc.text(instLine, margin, y)
-        y += i < fullRewrite.education.length - 1 ? 16 : 8
-      })
-      y += 4
+    .contact {
+      text-align: center;
+      font-size: 9.5pt;
+      color: #444;
+      margin-bottom: 2px;
     }
-
-    // ─── SKILLS ───
-    if (fullRewrite.skills && fullRewrite.skills.length > 0) {
-      addSectionHeader('Skills')
-      checkPage(24)
-
-      const skillsPerRow = 4
-      const skillWidth = contentWidth / skillsPerRow
-      let sx = margin
-      let skillRowY = y
-
-      fullRewrite.skills.forEach((skill, i) => {
-        if (i > 0 && i % skillsPerRow === 0) {
-          sx = margin
-          skillRowY += 20
-          checkPage(24)
-        }
-
-        doc.setFillColor(...colors.accentLight)
-        doc.setDrawColor(...colors.accentBorder)
-        doc.setLineWidth(0.5)
-        doc.roundedRect(sx + 1, skillRowY - 11, skillWidth - 8, 15, 3, 3, 'FD')
-
-        setFont(8, 'normal', colors.accent)
-        const skillText = doc.splitTextToSize(skill, skillWidth - 16)[0]
-        doc.text(skillText, sx + 7, skillRowY)
-        sx += skillWidth
-      })
-
-      y = skillRowY + 20
+    .section-header {
+      font-size: 10pt;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      border-top: 0.8px solid #bbb;
+      padding-top: 5px;
+      margin-bottom: 7px;
+      margin-top: 14px;
+      color: #111;
     }
-
-    // ─── FOOTER ───
-    const totalPages = doc.internal.getNumberOfPages()
-    for (let p = 1; p <= totalPages; p++) {
-      doc.setPage(p)
-      setFont(7, 'normal', colors.lightGray)
-      doc.text(
-        `${fullRewrite.name || 'Resume'}  ·  Page ${p} of ${totalPages}`,
-        pageWidth / 2, pageHeight - 20, { align: 'center' }
-      )
-      doc.text(
-        'Generated by Career Genie  ·  career-genie-jbr1.vercel.app',
-        pageWidth / 2, pageHeight - 10, { align: 'center' }
-      )
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 2px;
     }
+    .bold { font-weight: bold; font-size: 10.5pt; }
+    .italic { font-style: italic; font-size: 10pt; color: #333; }
+    .date {
+      font-size: 9.5pt;
+      color: #444;
+      white-space: nowrap;
+      padding-left: 12px;
+      flex-shrink: 0;
+    }
+    .location-right {
+      font-size: 9.5pt;
+      color: #444;
+      white-space: nowrap;
+      padding-left: 12px;
+      flex-shrink: 0;
+      font-style: italic;
+    }
+    .exp-block {
+      margin-bottom: 10px;
+      page-break-inside: avoid;
+    }
+    .bullets {
+      margin-top: 4px;
+      padding-left: 0;
+      list-style: none;
+    }
+    .bullets li {
+      display: flex;
+      gap: 7px;
+      margin-bottom: 3px;
+      font-size: 10pt;
+      line-height: 1.45;
+      color: #222;
+    }
+    .bullets li .dot { flex-shrink: 0; }
+    .project-tech {
+      font-weight: normal;
+      font-style: italic;
+      font-size: 10pt;
+      color: #444;
+    }
+    .skill-row {
+      font-size: 10pt;
+      margin-bottom: 4px;
+      line-height: 1.5;
+    }
+    .skill-label { font-weight: bold; }
+    .ach-list { list-style: none; padding: 0; }
+    .ach-list li {
+      display: flex;
+      gap: 7px;
+      margin-bottom: 3px;
+      font-size: 10pt;
+      line-height: 1.45;
+    }
+    .bottom-spacer {
+      height: 24mm;
+      display: block;
+    }
+    @page {
+      size: A4;
+      margin: 0;
+    }
+    @page :first {
+      margin: 0;
+    }
+    @page :left {
+      margin-top: 18mm;
+    }
+    @page :right {
+      margin-top: 18mm;
+    }
+    .page-break-spacer {
+      height: 18mm;
+      display: block;
+    }
+    @media print {
+      html, body {
+        width: 210mm;
+        height: 297mm;
+      }
+      .page {
+        padding: 18mm 18mm 28mm 18mm;
+      }
+      .exp-block {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+  </head>
+  <body>
+  <div class="page">
 
-    doc.save(`${(fullRewrite.name || 'resume').replace(/\s+/g, '_')}_careergenie.pdf`)
+    <div class="name">${nameFmt}</div>
+    ${contactParts.length > 0 ? `<div class="contact">${contactParts.join(' &nbsp;|&nbsp; ')}</div>` : ''}
+
+    ${fullRewrite.education && fullRewrite.education.length > 0 ? `
+    <div class="section-header">Education</div>
+    ${fullRewrite.education.map(edu => `
+      <div class="exp-block">
+        <div class="row">
+          <div class="bold">${edu.institution || ''}</div>
+          <div class="date">${edu.location || ''}</div>
+        </div>
+        <div class="row">
+          <div class="italic">${[edu.degree, edu.score ? `CGPA: ${edu.score}` : ''].filter(Boolean).join('; ')}</div>
+          <div class="date">${edu.year || ''}</div>
+        </div>
+      </div>
+    `).join('')}` : ''}
+
+    ${fullRewrite.experience && fullRewrite.experience.length > 0 ? `
+    <div class="section-header">Experience</div>
+    ${fullRewrite.experience.map(exp => `
+      <div class="exp-block">
+        <div class="row">
+          <div class="bold">${exp.role || ''}</div>
+          <div class="date">${exp.duration || ''}</div>
+        </div>
+        <div class="row">
+          <div class="italic">${exp.company || ''}</div>
+          <div class="location-right">${exp.location || ''}</div>
+        </div>
+        ${exp.bullets && exp.bullets.length > 0 ? `
+        <ul class="bullets">
+          ${exp.bullets.map(b => `<li><span class="dot">•</span><span>${b.startsWith('•') ? b.substring(1).trim() : b}</span></li>`).join('')}
+        </ul>` : ''}
+      </div>
+    `).join('')}` : ''}
+
+    ${fullRewrite.projects && fullRewrite.projects.length > 0 ? `
+    <div class="section-header">Projects</div>
+    ${fullRewrite.projects.map(proj => `
+      <div class="exp-block">
+        <div class="row">
+          <div class="bold">${proj.name || ''} ${proj.tech ? `<span class="project-tech"> | ${proj.tech}</span>` : ''}</div>
+          <div class="date">${proj.duration || ''}</div>
+        </div>
+        ${proj.bullets && proj.bullets.length > 0 ? `
+        <ul class="bullets">
+          ${proj.bullets.map(b => `<li><span class="dot">•</span><span>${b.startsWith('•') ? b.substring(1).trim() : b}</span></li>`).join('')}
+        </ul>` : ''}
+      </div>
+    `).join('')}` : ''}
+
+    ${fullRewrite.achievements && fullRewrite.achievements.length > 0 ? `
+    <div class="section-header">Certifications / Achievements</div>
+    <ul class="ach-list">
+      ${fullRewrite.achievements.map(a => `<li><span class="dot">•</span><span>${a.startsWith('•') ? a.substring(1).trim() : a}</span></li>`).join('')}
+    </ul>` : ''}
+
+    ${(fullRewrite.skillCategories && fullRewrite.skillCategories.length > 0) || (fullRewrite.skills && fullRewrite.skills.length > 0) ? `
+    <div class="section-header">Technical Skills</div>
+    ${fullRewrite.skillCategories && fullRewrite.skillCategories.length > 0
+      ? fullRewrite.skillCategories.map(cat => `
+        <div class="skill-row">
+          <span class="skill-label">${cat.label}: </span>
+          <span>${(cat.items || []).join(', ')}</span>
+        </div>`).join('')
+      : `<div class="skill-row">${(fullRewrite.skills || []).join('  •  ')}</div>`
+    }` : ''}
+
+    <div class="bottom-spacer"></div>
+
+  </div>
+  </body>
+  </html>`
+
+    const printWindow = window.open('', '_blank')
+    printWindow.document.write(html)
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => { printWindow.print() }, 600)
   }
 
   const scoreColor = (val) => val >= 75 ? '#22c55e' : val >= 50 ? '#f5c518' : '#ef4444'
@@ -817,7 +873,6 @@ JOB DESCRIPTION: ${jdText}`
             {/* Tab Content */}
             <div className="tab-content" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '20px', padding: '28px' }}>
 
-              {/* Keywords */}
               {activeTab === 'keywords' && (
                 <div>
                   <div style={{ marginBottom: '28px' }}>
@@ -845,7 +900,6 @@ JOB DESCRIPTION: ${jdText}`
                 </div>
               )}
 
-              {/* ATS */}
               {activeTab === 'ats' && (
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
@@ -861,7 +915,6 @@ JOB DESCRIPTION: ${jdText}`
                 </div>
               )}
 
-              {/* Rewrite */}
               {activeTab === 'rewrite' && (
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
@@ -879,7 +932,6 @@ JOB DESCRIPTION: ${jdText}`
                 </div>
               )}
 
-              {/* Full Rewrite */}
               {activeTab === 'fullrewrite' && fullRewrite && (
                 <div>
                   <div className="download-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
@@ -890,64 +942,94 @@ JOB DESCRIPTION: ${jdText}`
                     <button onClick={handleDownloadPDF} style={{ background: 'linear-gradient(135deg, #f5c518, #e8a200)', color: '#000', border: 'none', padding: '10px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '800', cursor: 'pointer' }}>⬇ Download PDF</button>
                   </div>
 
-                  <div style={{ fontSize: '24px', fontWeight: '900', color: '#fff', marginBottom: '4px' }}>{fullRewrite.name}</div>
-
-                  {/* Contact info preview */}
-                  {(fullRewrite.email || fullRewrite.phone || fullRewrite.location) && (
+                  <div style={{ fontSize: '22px', fontWeight: '900', color: '#fff', marginBottom: '4px' }}>{fullRewrite.name}</div>
+                  {(fullRewrite.phone || fullRewrite.email || fullRewrite.linkedin || fullRewrite.location) && (
                     <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginBottom: '16px' }}>
-                      {[fullRewrite.email, fullRewrite.phone, fullRewrite.location].filter(Boolean).join(' · ')}
+                      {[fullRewrite.phone, fullRewrite.email, fullRewrite.linkedin, fullRewrite.location].filter(Boolean).join(' · ')}
                     </div>
                   )}
 
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', marginTop: '8px', marginBottom: '20px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '10px' }}>PROFESSIONAL SUMMARY</div>
-                    <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.7', margin: 0 }}>{fullRewrite.summary}</p>
-                  </div>
+                  {fullRewrite.summary && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px', marginTop: '8px', marginBottom: '18px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '8px' }}>SUMMARY</div>
+                      <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.7', margin: 0 }}>{fullRewrite.summary}</p>
+                    </div>
+                  )}
 
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', marginBottom: '20px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '16px' }}>EXPERIENCE</div>
-                    {(fullRewrite.experience || []).map((exp, i) => (
-                      <div key={i} style={{ marginBottom: '20px' }}>
-                        <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff' }}>{exp.role}</div>
-                        <div style={{ fontSize: '13px', color: '#f5c518', marginBottom: '8px' }}>{exp.company} · {exp.duration}</div>
-                        {(exp.bullets || []).map((b, j) => (
-                          <div key={j} style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', lineHeight: '1.6', marginBottom: '6px', paddingLeft: '16px', position: 'relative' }}>
-                            <span style={{ position: 'absolute', left: 0, color: '#a78bfa' }}>•</span>{b}
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
+                  {fullRewrite.education && fullRewrite.education.length > 0 && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px', marginBottom: '18px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '12px' }}>EDUCATION</div>
+                      {fullRewrite.education.map((edu, i) => (
+                        <div key={i} style={{ marginBottom: '10px' }}>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>{edu.institution}</div>
+                          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>{edu.degree} {edu.score ? `· CGPA: ${edu.score}` : ''} · {edu.year}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', marginBottom: '20px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '16px' }}>EDUCATION</div>
-                    {(fullRewrite.education || []).map((edu, i) => (
-                      <div key={i} style={{ marginBottom: '12px' }}>
-                        <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff' }}>{edu.degree}</div>
-                        <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)' }}>{edu.institution} · {edu.year} {edu.score ? '| ' + edu.score : ''}</div>
-                      </div>
-                    ))}
-                  </div>
+                  {fullRewrite.experience && fullRewrite.experience.length > 0 && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px', marginBottom: '18px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '12px' }}>EXPERIENCE</div>
+                      {fullRewrite.experience.map((exp, i) => (
+                        <div key={i} style={{ marginBottom: '18px' }}>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>{exp.role}</div>
+                          <div style={{ fontSize: '13px', color: '#f5c518', marginBottom: '6px' }}>{exp.company} · {exp.duration}</div>
+                          {(exp.bullets || []).map((b, j) => (
+                            <div key={j} style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', lineHeight: '1.6', marginBottom: '4px', paddingLeft: '14px', position: 'relative' }}>
+                              <span style={{ position: 'absolute', left: 0, color: '#a78bfa' }}>•</span>{b}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', marginBottom: '20px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '12px' }}>SKILLS</div>
+                  {fullRewrite.projects && fullRewrite.projects.length > 0 && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px', marginBottom: '18px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '12px' }}>PROJECTS</div>
+                      {fullRewrite.projects.map((proj, i) => (
+                        <div key={i} style={{ marginBottom: '14px' }}>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>{proj.name} {proj.tech && <span style={{ fontWeight: '400', color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>| {proj.tech}</span>}</div>
+                          {(proj.bullets || []).map((b, j) => (
+                            <div key={j} style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', lineHeight: '1.6', marginBottom: '4px', paddingLeft: '14px', position: 'relative' }}>
+                              <span style={{ position: 'absolute', left: 0, color: '#a78bfa' }}>•</span>{b}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {fullRewrite.achievements && fullRewrite.achievements.length > 0 && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px', marginBottom: '18px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '10px' }}>CERTIFICATIONS / ACHIEVEMENTS</div>
+                      {fullRewrite.achievements.map((item, i) => (
+                        <div key={i} style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '5px', paddingLeft: '14px', position: 'relative' }}>
+                          <span style={{ position: 'absolute', left: 0, color: '#a78bfa' }}>•</span>{item}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px', marginBottom: '18px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', marginBottom: '10px' }}>SKILLS</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                       {(fullRewrite.skills || []).map((skill, i) => (
-                        <span key={i} style={{ background: 'rgba(139,92,246,0.1)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.2)', padding: '5px 12px', borderRadius: '20px', fontSize: '13px' }}>{skill}</span>
+                        <span key={i} style={{ background: 'rgba(139,92,246,0.1)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.2)', padding: '4px 12px', borderRadius: '20px', fontSize: '12px' }}>{skill}</span>
                       ))}
                     </div>
                   </div>
 
-                  <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)', borderRadius: '12px', padding: '16px' }}>
-                    <div style={{ fontSize: '12px', fontWeight: '800', color: '#4ade80', letterSpacing: '1px', marginBottom: '10px' }}>WHAT WE IMPROVED</div>
+                  <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)', borderRadius: '12px', padding: '14px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: '800', color: '#4ade80', letterSpacing: '1px', marginBottom: '8px' }}>WHAT WE IMPROVED</div>
                     {(fullRewrite.improvements || []).map((imp, i) => (
-                      <div key={i} style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '6px' }}>✓ {imp}</div>
+                      <div key={i} style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '5px' }}>✓ {imp}</div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Roadmap */}
               {activeTab === 'roadmap' && roadmap && (
                 <div>
                   <div style={{ marginBottom: '28px' }}>
@@ -1013,7 +1095,6 @@ JOB DESCRIPTION: ${jdText}`
                 </div>
               )}
 
-              {/* Interview */}
               {activeTab === 'interview' && interview && (
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
@@ -1058,7 +1139,6 @@ JOB DESCRIPTION: ${jdText}`
                 </div>
               )}
 
-              {/* Cover Letter */}
               {activeTab === 'cover' && coverLetter && (
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
@@ -1093,7 +1173,6 @@ JOB DESCRIPTION: ${jdText}`
 
             </div>
 
-            {/* Reset */}
             <button onClick={() => { setResults(null); setResumeText(''); setJdText(''); setFullRewrite(null); setUploadedFileName(''); setRoadmap(null); setInterview(null); setCoverLetter(null) }} style={{ width: '100%', padding: '14px', marginTop: '20px', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
               Analyze another resume
             </button>
