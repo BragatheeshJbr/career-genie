@@ -4,6 +4,7 @@ import { extractTextFromPDF } from '../pdfUtils'
 import genieIcon from '../assets/genie-icon.png'
 import { useAuth } from '../useAuth'
 import { openRazorpay, PLANS } from '../payment'
+import { trackEvent, trackApiCall } from '../Analytics'
 
 function JobFinder() {
   const navigate = useNavigate()
@@ -221,6 +222,10 @@ ${resume}`
       }
 
       setJobs(jobResults.slice(0, 15))
+      await trackEvent(user.id, `job_search_${tier}`, { resultsCount: jobResults.length })
+      if (tier === 'broad') await trackApiCall('adzuna')
+      if (tier === 'smart') await trackApiCall('jsearch')
+      if (tier === 'direct') await trackApiCall('jobspipe')
       setSearched(true)
 
     } catch (err) {
@@ -251,7 +256,11 @@ ${resume}`
       plan,
       user,
       onSuccess: async () => {
-        await runJobSearch(activeTier)
+        await trackEvent(user.id, 'payment_job_search', {
+        tier: activeTier,
+        amount: plan.amount / 100
+       })
+       await runJobSearch(activeTier)
       },
       onFailure: () => {
         setError('Payment cancelled. Please try again.')

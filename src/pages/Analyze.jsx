@@ -4,6 +4,7 @@ import { extractTextFromPDF } from '../pdfUtils'
 import genieIcon from '../assets/genie-icon.png'
 import { useAuth } from '../useAuth'
 import { supabase } from '../supabase'
+import { trackEvent, trackApiCall } from '../Analytics'
 
 function Analyze() {
   const navigate = useNavigate()
@@ -178,6 +179,8 @@ ${jdText}`
       setResults(parsed)
       setActiveTab('keywords')
       await saveAnalysis(parsed, jdText)
+      await trackEvent(user.id, 'analyze_resume', { matchScore: parsed.matchScore })
+      await trackApiCall('groq')
 
     } catch (err) {
       setError('Something went wrong. Please try again.')
@@ -270,6 +273,8 @@ ${jdText}`
       const clean = raw.replace(/```json|```/g, '').trim()
       setFullRewrite(JSON.parse(clean))
       setActiveTab('fullrewrite')
+      await trackEvent(user.id, 'full_rewrite', {})
+      await trackApiCall('groq')
 
     } catch (err) {
       setError('Rewrite failed. Please try again.')
@@ -337,6 +342,9 @@ MISSING KEYWORDS: ${results?.missingKeywords?.join(', ')}`
       const clean = raw.replace(/```json|```/g, '').trim()
       setRoadmap(JSON.parse(clean))
       setActiveTab('roadmap')
+      await trackEvent(user.id, 'generate_roadmap', {})
+      await trackApiCall('groq')
+
     } catch (err) {
       setError('Roadmap generation failed. Please try again.')
       console.error(err)
@@ -397,6 +405,9 @@ MISSING KEYWORDS: ${results?.missingKeywords?.join(', ')}`
       const clean = raw.replace(/```json|```/g, '').trim()
       setInterview(JSON.parse(clean))
       setActiveTab('interview')
+      await trackEvent(user.id, 'generate_interview', {})
+      await trackApiCall('groq')
+
     } catch (err) {
       setError('Interview prep generation failed. Please try again.')
       console.error(err)
@@ -444,6 +455,9 @@ JOB DESCRIPTION: ${jdText}`
       const clean = raw.replace(/```json|```/g, '').trim()
       setCoverLetter(JSON.parse(clean))
       setActiveTab('cover')
+      await trackEvent(user.id, 'generate_cover_letter', {})
+      await trackApiCall('groq')
+
     } catch (err) {
       setError('Cover letter generation failed. Please try again.')
       console.error(err)
@@ -468,220 +482,196 @@ JOB DESCRIPTION: ${jdText}`
     ].filter(Boolean)
 
     const html = `<!DOCTYPE html>
-  <html>
-  <head>
-  <meta charset="UTF-8">
-  <title>${nameFmt} — Resume</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      font-family: 'Times New Roman', Times, serif;
-      font-size: 10.5pt;
-      color: #111;
-      background: #fff;
-      width: 210mm;
-      margin: 0 auto;
-    }
-    .page {
-      width: 210mm;
-      padding: 18mm 18mm 28mm 18mm;
-    }
-    .name {
-      text-align: center;
-      font-size: 22pt;
-      font-weight: bold;
-      letter-spacing: 0.5px;
-      margin-bottom: 5px;
-    }
-    .contact {
-      text-align: center;
-      font-size: 9.5pt;
-      color: #444;
-      margin-bottom: 2px;
-    }
-    .section-header {
-      font-size: 10pt;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      border-top: 0.8px solid #bbb;
-      padding-top: 5px;
-      margin-bottom: 7px;
-      margin-top: 14px;
-      color: #111;
-    }
-    .row {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-bottom: 2px;
-    }
-    .bold { font-weight: bold; font-size: 10.5pt; }
-    .italic { font-style: italic; font-size: 10pt; color: #333; }
-    .date {
-      font-size: 9.5pt;
-      color: #444;
-      white-space: nowrap;
-      padding-left: 12px;
-      flex-shrink: 0;
-    }
-    .location-right {
-      font-size: 9.5pt;
-      color: #444;
-      white-space: nowrap;
-      padding-left: 12px;
-      flex-shrink: 0;
-      font-style: italic;
-    }
-    .exp-block {
-      margin-bottom: 10px;
-      page-break-inside: avoid;
-    }
-    .bullets {
-      margin-top: 4px;
-      padding-left: 0;
-      list-style: none;
-    }
-    .bullets li {
-      display: flex;
-      gap: 7px;
-      margin-bottom: 3px;
-      font-size: 10pt;
-      line-height: 1.45;
-      color: #222;
-    }
-    .bullets li .dot { flex-shrink: 0; }
-    .project-tech {
-      font-weight: normal;
-      font-style: italic;
-      font-size: 10pt;
-      color: #444;
-    }
-    .skill-row {
-      font-size: 10pt;
-      margin-bottom: 4px;
-      line-height: 1.5;
-    }
-    .skill-label { font-weight: bold; }
-    .ach-list { list-style: none; padding: 0; }
-    .ach-list li {
-      display: flex;
-      gap: 7px;
-      margin-bottom: 3px;
-      font-size: 10pt;
-      line-height: 1.45;
-    }
-    .bottom-spacer {
-      height: 24mm;
-      display: block;
-    }
-    @page {
-      size: A4;
-      margin: 0;
-    }
-    @page :first {
-      margin: 0;
-    }
-    @page :left {
-      margin-top: 18mm;
-    }
-    @page :right {
-      margin-top: 18mm;
-    }
-    .page-break-spacer {
-      height: 18mm;
-      display: block;
-    }
-    @media print {
-      html, body {
-        width: 210mm;
-        height: 297mm;
-      }
-      .page {
-        padding: 18mm 18mm 28mm 18mm;
-      }
-      .exp-block {
-        page-break-inside: avoid;
-      }
-    }
-  </style>
-  </head>
-  <body>
-  <div class="page">
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${nameFmt} — Resume</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 10.5pt;
+    color: #111;
+    background: #fff;
+    width: 210mm;
+    margin: 0 auto;
+  }
+  .page {
+    width: 210mm;
+    padding: 18mm 18mm 28mm 18mm;
+  }
+  .name {
+    text-align: center;
+    font-size: 22pt;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+  }
+  .contact {
+    text-align: center;
+    font-size: 9.5pt;
+    color: #444;
+    margin-bottom: 2px;
+  }
+  .section-header {
+    font-size: 10pt;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border-top: 0.8px solid #bbb;
+    padding-top: 5px;
+    margin-bottom: 7px;
+    margin-top: 14px;
+    color: #111;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 2px;
+  }
+  .bold { font-weight: bold; font-size: 10.5pt; }
+  .italic { font-style: italic; font-size: 10pt; color: #333; }
+  .date {
+    font-size: 9.5pt;
+    color: #444;
+    white-space: nowrap;
+    padding-left: 12px;
+    flex-shrink: 0;
+  }
+  .location-right {
+    font-size: 9.5pt;
+    color: #444;
+    white-space: nowrap;
+    padding-left: 12px;
+    flex-shrink: 0;
+    font-style: italic;
+  }
+  .exp-block {
+    margin-bottom: 10px;
+    page-break-inside: avoid;
+  }
+  .bullets {
+    margin-top: 4px;
+    padding-left: 0;
+    list-style: none;
+  }
+  .bullets li {
+    display: flex;
+    gap: 7px;
+    margin-bottom: 3px;
+    font-size: 10pt;
+    line-height: 1.45;
+    color: #222;
+  }
+  .bullets li .dot { flex-shrink: 0; }
+  .project-tech {
+    font-weight: normal;
+    font-style: italic;
+    font-size: 10pt;
+    color: #444;
+  }
+  .skill-row {
+    font-size: 10pt;
+    margin-bottom: 4px;
+    line-height: 1.5;
+  }
+  .skill-label { font-weight: bold; }
+  .ach-list { list-style: none; padding: 0; }
+  .ach-list li {
+    display: flex;
+    gap: 7px;
+    margin-bottom: 3px;
+    font-size: 10pt;
+    line-height: 1.45;
+  }
+  .bottom-spacer { height: 24mm; display: block; }
+  @page {
+    size: A4;
+    margin: 18mm 18mm 28mm 18mm;
+  }
+  @media print {
+    html, body { width: 210mm; }
+    .page { padding: 0; }
+    .exp-block { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
 
-    <div class="name">${nameFmt}</div>
-    ${contactParts.length > 0 ? `<div class="contact">${contactParts.join(' &nbsp;|&nbsp; ')}</div>` : ''}
+  <div class="name">${nameFmt}</div>
+  ${contactParts.length > 0 ? `<div class="contact">${contactParts.join(' &nbsp;|&nbsp; ')}</div>` : ''}
 
-    ${fullRewrite.education && fullRewrite.education.length > 0 ? `
-    <div class="section-header">Education</div>
-    ${fullRewrite.education.map(edu => `
-      <div class="exp-block">
-        <div class="row">
-          <div class="bold">${edu.institution || ''}</div>
-          <div class="date">${edu.location || ''}</div>
-        </div>
-        <div class="row">
-          <div class="italic">${[edu.degree, edu.score ? `CGPA: ${edu.score}` : ''].filter(Boolean).join('; ')}</div>
-          <div class="date">${edu.year || ''}</div>
-        </div>
+  ${fullRewrite.education && fullRewrite.education.length > 0 ? `
+  <div class="section-header">Education</div>
+  ${fullRewrite.education.map(edu => `
+    <div class="exp-block">
+      <div class="row">
+        <div class="bold">${edu.institution || ''}</div>
+        <div class="date">${edu.location || ''}</div>
       </div>
-    `).join('')}` : ''}
-
-    ${fullRewrite.experience && fullRewrite.experience.length > 0 ? `
-    <div class="section-header">Experience</div>
-    ${fullRewrite.experience.map(exp => `
-      <div class="exp-block">
-        <div class="row">
-          <div class="bold">${exp.role || ''}</div>
-          <div class="date">${exp.duration || ''}</div>
-        </div>
-        <div class="row">
-          <div class="italic">${exp.company || ''}</div>
-          <div class="location-right">${exp.location || ''}</div>
-        </div>
-        ${exp.bullets && exp.bullets.length > 0 ? `
-        <ul class="bullets">
-          ${exp.bullets.map(b => `<li><span class="dot">•</span><span>${b.startsWith('•') ? b.substring(1).trim() : b}</span></li>`).join('')}
-        </ul>` : ''}
+      <div class="row">
+        <div class="italic">${[edu.degree, edu.score ? `CGPA: ${edu.score}` : ''].filter(Boolean).join('; ')}</div>
+        <div class="date">${edu.year || ''}</div>
       </div>
-    `).join('')}` : ''}
+    </div>
+  `).join('')}` : ''}
 
-    ${fullRewrite.projects && fullRewrite.projects.length > 0 ? `
-    <div class="section-header">Projects</div>
-    ${fullRewrite.projects.map(proj => `
-      <div class="exp-block">
-        <div class="row">
-          <div class="bold">${proj.name || ''} ${proj.tech ? `<span class="project-tech"> | ${proj.tech}</span>` : ''}</div>
-          <div class="date">${proj.duration || ''}</div>
-        </div>
-        ${proj.bullets && proj.bullets.length > 0 ? `
-        <ul class="bullets">
-          ${proj.bullets.map(b => `<li><span class="dot">•</span><span>${b.startsWith('•') ? b.substring(1).trim() : b}</span></li>`).join('')}
-        </ul>` : ''}
+  ${fullRewrite.experience && fullRewrite.experience.length > 0 ? `
+  <div class="section-header">Experience</div>
+  ${fullRewrite.experience.map(exp => `
+    <div class="exp-block">
+      <div class="row">
+        <div class="bold">${exp.role || ''}</div>
+        <div class="date">${exp.duration || ''}</div>
       </div>
-    `).join('')}` : ''}
+      <div class="row">
+        <div class="italic">${exp.company || ''}</div>
+        <div class="location-right">${exp.location || ''}</div>
+      </div>
+      ${exp.bullets && exp.bullets.length > 0 ? `
+      <ul class="bullets">
+        ${exp.bullets.map(b => `<li><span class="dot">•</span><span>${b.startsWith('•') ? b.substring(1).trim() : b}</span></li>`).join('')}
+      </ul>` : ''}
+    </div>
+  `).join('')}` : ''}
 
-    ${fullRewrite.achievements && fullRewrite.achievements.length > 0 ? `
-    <div class="section-header">Certifications / Achievements</div>
-    <ul class="ach-list">
-      ${fullRewrite.achievements.map(a => `<li><span class="dot">•</span><span>${a.startsWith('•') ? a.substring(1).trim() : a}</span></li>`).join('')}
-    </ul>` : ''}
+  ${fullRewrite.projects && fullRewrite.projects.length > 0 ? `
+  <div class="section-header">Projects</div>
+  ${fullRewrite.projects.map(proj => `
+    <div class="exp-block">
+      <div class="row">
+        <div class="bold">${proj.name || ''} ${proj.tech ? `<span class="project-tech"> | ${proj.tech}</span>` : ''}</div>
+        <div class="date">${proj.duration || ''}</div>
+      </div>
+      ${proj.bullets && proj.bullets.length > 0 ? `
+      <ul class="bullets">
+        ${proj.bullets.map(b => `<li><span class="dot">•</span><span>${b.startsWith('•') ? b.substring(1).trim() : b}</span></li>`).join('')}
+      </ul>` : ''}
+    </div>
+  `).join('')}` : ''}
 
-    ${(fullRewrite.skillCategories && fullRewrite.skillCategories.length > 0) || (fullRewrite.skills && fullRewrite.skills.length > 0) ? `
-    <div class="section-header">Technical Skills</div>
-    ${fullRewrite.skillCategories && fullRewrite.skillCategories.length > 0
-      ? fullRewrite.skillCategories.map(cat => `
-        <div class="skill-row">
-          <span class="skill-label">${cat.label}: </span>
-          <span>${(cat.items || []).join(', ')}</span>
-        </div>`).join('')
-      : `<div class="skill-row">${(fullRewrite.skills || []).join('  •  ')}</div>`
-    }` : ''}
+  ${fullRewrite.achievements && fullRewrite.achievements.length > 0 ? `
+  <div class="section-header">Certifications / Achievements</div>
+  <ul class="ach-list">
+    ${fullRewrite.achievements.map(a => `<li><span class="dot">•</span><span>${a.startsWith('•') ? a.substring(1).trim() : a}</span></li>`).join('')}
+  </ul>` : ''}
 
-    <div class="bottom-spacer"></div>
+  ${(fullRewrite.skillCategories && fullRewrite.skillCategories.length > 0) || (fullRewrite.skills && fullRewrite.skills.length > 0) ? `
+  <div class="section-header">Technical Skills</div>
+  ${fullRewrite.skillCategories && fullRewrite.skillCategories.length > 0
+    ? fullRewrite.skillCategories.map(cat => `
+      <div class="skill-row">
+        <span class="skill-label">${cat.label}: </span>
+        <span>${(cat.items || []).join(', ')}</span>
+      </div>`).join('')
+    : `<div class="skill-row">${(fullRewrite.skills || []).join('  •  ')}</div>`
+  }` : ''}
 
-  </div>
-  </body>
-  </html>`
+  <div class="bottom-spacer"></div>
+</div>
+</body>
+</html>`
 
     const printWindow = window.open('', '_blank')
     printWindow.document.write(html)
@@ -846,7 +836,6 @@ JOB DESCRIPTION: ${jdText}`
         {/* Results */}
         {results && (
           <div>
-            {/* Score Cards */}
             <div className="score-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '32px' }}>
               {[
                 { label: 'Match Score', value: results.matchScore },
@@ -861,7 +850,6 @@ JOB DESCRIPTION: ${jdText}`
               ))}
             </div>
 
-            {/* Tabs */}
             <div className="tabs-row" style={{ display: 'flex', gap: '6px', marginBottom: '24px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '6px' }}>
               {tabs.map(tab => (
                 <button className="tab-btn" key={tab} onClick={() => setActiveTab(tab)} style={{ flex: 1, padding: '10px 12px', background: activeTab === tab ? 'rgba(245,197,24,0.12)' : 'transparent', border: activeTab === tab ? '1px solid rgba(245,197,24,0.25)' : '1px solid transparent', borderRadius: '10px', color: activeTab === tab ? '#f5c518' : 'rgba(255,255,255,0.4)', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>
@@ -870,7 +858,6 @@ JOB DESCRIPTION: ${jdText}`
               ))}
             </div>
 
-            {/* Tab Content */}
             <div className="tab-content" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '20px', padding: '28px' }}>
 
               {activeTab === 'keywords' && (
