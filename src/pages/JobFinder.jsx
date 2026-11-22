@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { extractTextFromPDF } from '../pdfUtils'
 import genieIcon from '../assets/genie-icon.png'
@@ -6,19 +6,42 @@ import { useAuth } from '../useAuth'
 import { openRazorpay, PLANS } from '../payment'
 import { trackEvent, trackApiCall } from '../Analytics'
 
+// Keeps the last paid search in this browser tab, so going to "Analyse this job"
+// and coming back doesn't wipe the results the user paid for.
+const SAVED_KEY = 'cg_last_job_search'
+const loadSaved = () => {
+  try { return JSON.parse(sessionStorage.getItem(SAVED_KEY)) || null } catch { return null }
+}
+
 function JobFinder() {
   const navigate = useNavigate()
-  const [resumeText, setResumeText] = useState('')
-  const [uploadedFileName, setUploadedFileName] = useState('')
+  const [saved] = useState(loadSaved)
+  const [resumeText, setResumeText] = useState(saved?.resumeText || '')
+  const [uploadedFileName, setUploadedFileName] = useState(saved?.uploadedFileName || '')
   const [pdfLoading, setPdfLoading] = useState(false)
-  const [location, setLocation] = useState('')
+  const [location, setLocation] = useState(saved?.location || '')
   const [loading, setLoading] = useState(false)
-  const [jobs, setJobs] = useState([])
-  const [profile, setProfile] = useState(null)
+  const [jobs, setJobs] = useState(saved?.jobs || [])
+  const [profile, setProfile] = useState(saved?.profile || null)
   const [error, setError] = useState('')
-  const [searched, setSearched] = useState(false)
-  const [activeTier, setActiveTier] = useState('broad')
+  const [searched, setSearched] = useState(!!saved?.jobs?.length)
+  const [activeTier, setActiveTier] = useState(saved?.activeTier || 'broad')
+  const [topPicks, setTopPicks] = useState(saved?.topPicks || null)
+  const [picksNote, setPicksNote] = useState(saved?.picksNote || '')
+  const [ranking, setRanking] = useState(false)
   const { user, signOut } = useAuth()
+
+  const resetPicks = () => { setTopPicks(null); setPicksNote(''); setRanking(false) }
+
+  useEffect(() => {
+    try {
+      if (jobs.length > 0) {
+        sessionStorage.setItem(SAVED_KEY, JSON.stringify({ jobs, profile, topPicks, picksNote, activeTier, resumeText, uploadedFileName, location }))
+      } else {
+        sessionStorage.removeItem(SAVED_KEY)
+      }
+    } catch { /* storage unavailable — results just won't persist */ }
+  }, [jobs, profile, topPicks, picksNote, activeTier, resumeText, uploadedFileName, location])
 
   const tiers = [
     {
@@ -51,15 +74,15 @@ function JobFinder() {
     },
     {
       id: 'direct',
-      name: 'Direct Search',
-      icon: '🎯',
+      name: 'Global Search',
+      icon: '🌍',
       price: '₹39',
       priceNote: 'per search',
-      description: 'Straight from company career pages — freshest listings, no middleman',
+      description: 'Jobs abroad and remote roles. Most overseas jobs need a work visa.',
       color: '#a78bfa',
       bgColor: 'rgba(139,92,246,0.08)',
       borderColor: 'rgba(139,92,246,0.25)',
-      tags: ['Workday', 'Greenhouse', 'Lever', 'Direct ATS'],
+      tags: ['Abroad', 'Remote', 'International'],
       paid: true,
       plan: 'MNC_SEARCH'
     }
@@ -137,7 +160,7 @@ ${resume}`
       job_country: 'India',
       job_is_remote: job.title?.toLowerCase().includes('remote') || false,
       job_employment_type: job.contract_time || 'Full Time',
-      job_description: job.description?.substring(0, 300),
+      job_description: job.description || '',
       job_apply_link: job.redirect_url,
       job_posted_at_timestamp: job.created ? new Date(job.created).getTime() / 1000 : null,
       job_min_salary: job.salary_min ? Math.round(job.salary_min) : null,
@@ -194,12 +217,134 @@ ${resume}`
     }))
   }
 
+  // ---------- Helpers for Top 3 picks ----------
+
+  const stripHtml = (text) => (text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+
+  // Remove repeated listings (same title + company + city)
+  const dedupeJobs = (list) => {
+    const seen = new Set()
+    return list.filter(job => {
+      const key = [job.job_title, job.employer_name, job.job_city]
+        .map(v => (v || '').toString().toLowerCase().replace(/[^a-z0-9]/g, ''))
+        .join('|')
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }
+
+  // Pull the "X years" requirement out of a JD so the AI can't miss it
+  const extractExperience = (desc) => {
+    const text = stripHtml(desc)
+    const match = text.match(/(\d{1,2})\s*(?:\+|–|-|to)?\s*(\d{1,2})?\s*\+?\s*(?:years?|yrs?)/i)
+    if (!match) return 'not stated'
+    const start = Math.max(0, match.index - 30)
+    return text.substring(start, match.index + match[0].length + 30).trim()
+  }
+
+  const daysOld = (ts) => {
+    if (!ts) return 'unknown'
+    return `${Math.max(0, Math.floor((Date.now() - ts * 1000) / 86400000))} days`
+  }
+
+  const rankTopJobs = async (extractedProfile, jobList, resume, tier) => {
+    const jobsBlock = jobList.map((job, i) => {
+      const location = job.job_is_remote ? `${job.job_city || ''} ${job.job_country || ''} (remote)` : `${job.job_city || ''} ${job.job_country || ''}`
+      return `[${i}] ${job.job_title} | ${job.employer_name} | ${location.trim()} | posted: ${daysOld(job.job_posted_at_timestamp)} ago | experience asked: ${extractExperience(job.job_description)}
+JD: ${stripHtml(job.job_description).substring(0, 700)}`
+    }).join('\n\n')
+
+    const globalRule = tier === 'direct'
+      ? '- This is a GLOBAL search. The candidate lives in India. Prefer remote roles open to India/worldwide. If a pick is onsite outside India and does not mention visa sponsorship, say in watch_out that it likely needs a work visa.'
+      : ''
+
+    const prompt = `You are a careful career coach. Pick the jobs this candidate should apply to first.
+
+CANDIDATE PROFILE:
+${JSON.stringify(extractedProfile)}
+
+RESUME (excerpt):
+${stripHtml(resume).substring(0, 3500)}
+
+JOBS:
+${jobsBlock}
+
+RULES:
+- Pick UP TO 3 jobs, best first. Pick fewer if fewer are realistic. Never force 3.
+- Experience fit matters most. Do NOT pick a job that asks for more than 2 years above the candidate's experience.
+- Reasons must quote concrete facts from the JD and the resume (skills, years, tools, role). No generic praise like "great opportunity".
+- Prefer recent postings over old ones.
+${globalRule}
+- If no job is realistic, return an empty picks array and explain briefly in "note".
+
+Return ONLY valid JSON, no markdown:
+{"picks":[{"index":<number>,"fit":"Strong match" or "Good match","reasons":["<fact-based reason>","<fact-based reason>"],"watch_out":"<one honest gap or risk, or empty string>"}],"note":"<one short line, or empty string>"}`
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-120b',
+        messages: [
+          { role: 'system', content: 'You rank job listings for a candidate. You only state facts found in the provided resume and job descriptions. Always return valid JSON only.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.2
+      })
+    })
+
+    const data = await response.json()
+    const raw = data.choices[0].message.content
+    const jsonText = raw.replace(/```json|```/g, '').match(/\{[\s\S]*\}/)?.[0] || '{}'
+    const parsed = JSON.parse(jsonText)
+
+    // Keep only valid, unique indexes; max 3
+    const used = new Set()
+    const picks = (parsed.picks || [])
+      .filter(p => Number.isInteger(p.index) && p.index >= 0 && p.index < jobList.length && !used.has(p.index) && used.add(p.index))
+      .slice(0, 3)
+      .map(p => ({
+        index: p.index,
+        fit: p.fit === 'Strong match' ? 'Strong match' : 'Good match',
+        reasons: (p.reasons || []).slice(0, 3),
+        watchOut: p.watch_out || ''
+      }))
+
+    return { picks, note: parsed.note || '' }
+  }
+
+  // Some job sources (e.g. Adzuna) only return a preview of the JD, cut off with "…"
+  const isPartialJD = (desc) => {
+    const text = stripHtml(desc)
+    return text.length < 800 || /(…|\.\.\.)\s*$/.test(text)
+  }
+
+  const goToAnalysis = (job, source) => {
+    const partial = isPartialJD(job.job_description)
+    trackEvent(user?.id, 'job_to_analysis', { tier: activeTier, source, title: job.job_title, partialJD: partial })
+    navigate('/analyze', {
+      state: {
+        resumeText,
+        jdText: `${job.job_title} — ${job.employer_name}\n\n${stripHtml(job.job_description)}`,
+        jobTitle: job.job_title,
+        company: job.employer_name,
+        jdPartial: partial,
+        applyLink: job.job_apply_link
+      }
+    })
+  }
+
   const runJobSearch = async (tier) => {
     setLoading(true)
     setJobs([])
     setProfile(null)
     setSearched(false)
     setError('')
+    resetPicks()
 
     try {
       const extractedProfile = await extractProfileFromResume(resumeText)
@@ -221,12 +366,30 @@ ${resume}`
         jobResults = await searchJobsPipe(extractedProfile)
       }
 
-      setJobs(jobResults.slice(0, 15))
-      await trackEvent(user.id, `job_search_${tier}`, { resultsCount: jobResults.length })
+      const finalJobs = dedupeJobs(jobResults).slice(0, 15)
+      setJobs(finalJobs)
+      await trackEvent(user.id, `job_search_${tier}`, { resultsCount: finalJobs.length })
       if (tier === 'broad') await trackApiCall('adzuna')
       if (tier === 'smart') await trackApiCall('jsearch')
       if (tier === 'direct') await trackApiCall('jobspipe')
       setSearched(true)
+      setLoading(false)
+
+      // Top 3 picks — runs after results are shown. If it fails, the search still works.
+      if (finalJobs.length > 0) {
+        setRanking(true)
+        try {
+          const { picks, note } = await rankTopJobs(extractedProfile, finalJobs, resumeText, tier)
+          setTopPicks(picks)
+          setPicksNote(note)
+          await trackEvent(user.id, 'top_picks_shown', { tier, picks: picks.length })
+        } catch (rankErr) {
+          console.error('Top picks failed:', rankErr)
+          setTopPicks(null)
+        } finally {
+          setRanking(false)
+        }
+      }
 
     } catch (err) {
       setError('Something went wrong. Please try again.')
@@ -348,7 +511,7 @@ ${resume}`
           {tiers.map(tier => (
             <div
               key={tier.id}
-              onClick={() => { setActiveTier(tier.id); setJobs([]); setSearched(false); setProfile(null) }}
+              onClick={() => { setActiveTier(tier.id); setJobs([]); setSearched(false); setProfile(null); resetPicks() }}
               style={{ background: activeTier === tier.id ? tier.bgColor : 'rgba(255,255,255,0.02)', border: `1px solid ${activeTier === tier.id ? tier.borderColor : 'rgba(255,255,255,0.07)'}`, borderRadius: '16px', padding: '20px', cursor: 'pointer', transition: 'all 0.2s', position: 'relative' }}
             >
               <div style={{ fontSize: '24px', marginBottom: '10px' }}>{tier.icon}</div>
@@ -386,14 +549,14 @@ ${resume}`
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
               <label style={{ fontSize: '13px', fontWeight: '700', color: 'rgba(255,255,255,0.45)', display: 'block', marginBottom: '12px', letterSpacing: '0.5px' }}>📍 PREFERRED LOCATION</label>
-              <input value={location} onChange={e => setLocation(e.target.value)} placeholder='e.g. Bangalore, Chennai, Mumbai, Remote...' style={{ width: '100%', padding: '12px 14px', fontSize: '14px', fontFamily: 'Inter, sans-serif', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#fff', outline: 'none', boxSizing: 'border-box' }}
+              <input value={activeTier === 'direct' ? '' : location} disabled={activeTier === 'direct'} onChange={e => setLocation(e.target.value)} placeholder={activeTier === 'direct' ? 'Not used for Global Search — shows jobs worldwide' : 'e.g. Bangalore, Chennai, Mumbai, Remote...'} style={{ width: '100%', padding: '12px 14px', fontSize: '14px', fontFamily: 'Inter, sans-serif', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#fff', outline: 'none', boxSizing: 'border-box', opacity: activeTier === 'direct' ? 0.5 : 1, cursor: activeTier === 'direct' ? 'not-allowed' : 'text' }}
                 onFocus={e => { e.target.style.borderColor = activeTierData.borderColor }}
                 onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }}
               />
             </div>
             <div style={{ background: activeTierData.bgColor, border: `1px solid ${activeTierData.borderColor}`, borderRadius: '12px', padding: '16px', flex: 1 }}>
               <div style={{ fontSize: '12px', fontWeight: '800', color: activeTierData.color, letterSpacing: '1px', marginBottom: '12px' }}>
-                {activeTier === 'broad' ? '🌐 BROAD SEARCH' : activeTier === 'smart' ? '🔍 SMART SEARCH' : '🎯 DIRECT SEARCH'}
+                {activeTier === 'broad' ? '🌐 BROAD SEARCH' : activeTier === 'smart' ? '🔍 SMART SEARCH' : '🌍 GLOBAL SEARCH'}
               </div>
               {activeTier === 'broad' && [
                 { icon: '🌐', text: 'Thousands of job boards in one search' },
@@ -416,10 +579,10 @@ ${resume}`
                 </div>
               ))}
               {activeTier === 'direct' && [
-                { icon: '🎯', text: 'Direct from company career pages' },
-                { icon: '✨', text: 'Freshest listings — no middleman' },
-                { icon: '🔄', text: 'Cross source deduplication' },
-                { icon: '📋', text: 'Full job descriptions and requirements' },
+                { icon: '🌍', text: 'Jobs abroad and remote roles' },
+                { icon: '✈️', text: 'Most overseas jobs need a work visa — employers rarely sponsor freshers' },
+                { icon: '🏠', text: 'Best bets: remote roles open to India' },
+                { icon: '📋', text: 'Full job descriptions, duplicates removed' },
               ].map((s, i) => (
                 <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '10px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', alignItems: 'flex-start' }}>
                   <span>{s.icon}</span><span>{s.text}</span>
@@ -441,7 +604,7 @@ ${resume}`
               ? `🌐 Broad Search — ₹19`
               : activeTier === 'smart'
                 ? `🔍 Smart Search — ₹29`
-                : `🎯 Direct Search — ₹39`}
+                : `🌍 Global Search — ₹39`}
         </button>
 
         {/* Profile Card */}
@@ -481,7 +644,7 @@ ${resume}`
               <button onClick={() => { setSearched(false); setError(''); runJobSearch(activeTier) }} style={{ background: getBtnGradient(), color: getBtnColor(), border: 'none', padding: '12px 28px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
                 🔄 Retry — free
               </button>
-              <button onClick={() => { setSearched(false); setProfile(null); setResumeText(''); setUploadedFileName(''); setLocation('') }} style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)', padding: '12px 28px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
+              <button onClick={() => { setSearched(false); setProfile(null); setResumeText(''); setUploadedFileName(''); setLocation(''); resetPicks() }} style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)', padding: '12px 28px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
                 Try different resume
               </button>
             </div>
@@ -500,6 +663,86 @@ ${resume}`
               </div>
             </div>
 
+            {/* Top 3 Picks */}
+            {ranking && (
+              <div style={{ background: activeTierData.bgColor, border: `1px dashed ${activeTierData.borderColor}`, borderRadius: '16px', padding: '20px', marginBottom: '24px', textAlign: 'center' }}>
+                <div style={{ fontSize: '14px', fontWeight: '700', color: activeTierData.color }}>⭐ Picking your top 3 from these jobs...</div>
+                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', marginTop: '6px' }}>Comparing each job with your skills and experience</div>
+              </div>
+            )}
+
+            {!ranking && topPicks && (
+              <div style={{ marginBottom: '28px' }}>
+                <div style={{ marginBottom: '14px' }}>
+                  <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#fff', margin: '0 0 4px' }}>⭐ Top {topPicks.length > 0 ? topPicks.length : ''} for you</h2>
+                  <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', margin: 0, lineHeight: '1.5' }}>
+                    {topPicks.length > 0
+                      ? 'Picked from these results based on your skills and experience. Analyse each one to tailor your resume before you apply.'
+                      : (picksNote || 'None of these jobs is a close fit for your experience right now. Browse the full list below, or try another search type.')}
+                  </p>
+                  {topPicks.length > 0 && topPicks.length < 3 && (
+                    <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', margin: '6px 0 0' }}>
+                      Only {topPicks.length} strong {topPicks.length === 1 ? 'match' : 'matches'} this time — the others need more experience or don't fit your profile as well.
+                    </p>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {topPicks.map((pick, rank) => {
+                    const job = jobs[pick.index]
+                    if (!job) return null
+                    return (
+                      <div key={pick.index} style={{ background: activeTierData.bgColor, border: `1px solid ${activeTierData.borderColor}`, borderRadius: '16px', padding: '20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '14px' }}>
+                          <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: getBtnGradient(), color: getBtnColor(), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: '900', flexShrink: 0 }}>{rank + 1}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                              <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#fff', margin: 0 }}>{job.job_title}</h3>
+                              <span style={{ fontSize: '11px', fontWeight: '800', background: pick.fit === 'Strong match' ? 'rgba(34,197,94,0.12)' : 'rgba(245,197,24,0.12)', color: pick.fit === 'Strong match' ? '#4ade80' : '#f5c518', border: `1px solid ${pick.fit === 'Strong match' ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'}`, padding: '2px 10px', borderRadius: '20px' }}>{pick.fit}</span>
+                            </div>
+                            <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>
+                              <span style={{ color: activeTierData.color, fontWeight: '600' }}>{job.employer_name}</span>
+                              {job.job_city ? ` · 📍 ${job.job_city}${job.job_country ? ', ' + job.job_country : ''}` : ''}
+                              {job.job_is_remote ? ' · 🏠 Remote' : ''}
+                              {` · ${getPostedDate(job.job_posted_at_timestamp)}`}
+                            </div>
+                          </div>
+                        </div>
+
+                        {pick.reasons.length > 0 && (
+                          <div style={{ marginBottom: '12px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: '800', color: 'rgba(255,255,255,0.35)', letterSpacing: '1px', marginBottom: '8px' }}>WHY IT FITS YOU</div>
+                            {pick.reasons.map((reason, r) => (
+                              <div key={r} style={{ display: 'flex', gap: '8px', fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.55', marginBottom: '6px' }}>
+                                <span style={{ color: '#4ade80', flexShrink: 0 }}>✓</span><span>{reason}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {pick.watchOut && (
+                          <div style={{ display: 'flex', gap: '8px', fontSize: '13px', color: 'rgba(255,255,255,0.65)', lineHeight: '1.55', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px' }}>
+                            <span style={{ flexShrink: 0 }}>⚠️</span><span><b style={{ color: '#fb923c' }}>Watch out:</b> {pick.watchOut}</span>
+                          </div>
+                        )}
+
+                        <div className="job-card-footer" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                          <a href={job.job_apply_link} target="_blank" rel="noopener noreferrer" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.75)', border: '1px solid rgba(255,255,255,0.12)', padding: '10px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '700', textDecoration: 'none', display: 'inline-block', textAlign: 'center' }}>
+                            View job
+                          </a>
+                          <button onClick={() => goToAnalysis(job, 'top_pick')} style={{ background: getBtnGradient(), color: getBtnColor(), border: 'none', padding: '10px 22px', borderRadius: '10px', fontSize: '13px', fontWeight: '800', cursor: 'pointer' }}>
+                            Analyse this job →
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div style={{ fontSize: '14px', fontWeight: '700', color: 'rgba(255,255,255,0.5)', margin: '28px 0 12px' }}>All {jobs.length} results</div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {jobs.map((job, i) => (
                 <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '20px', transition: 'border-color 0.2s, background 0.2s' }}
@@ -508,7 +751,12 @@ ${resume}`
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', gap: '12px' }}>
                     <div style={{ flex: 1 }}>
-                      <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>{job.job_title}</h3>
+                      <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>
+                        {job.job_title}
+                        {topPicks?.some(p => p.index === i) && (
+                          <span style={{ fontSize: '11px', fontWeight: '800', color: '#f5c518', background: 'rgba(245,197,24,0.1)', border: '1px solid rgba(245,197,24,0.3)', padding: '2px 8px', borderRadius: '20px', marginLeft: '8px', verticalAlign: 'middle' }}>⭐ Top pick</span>
+                        )}
+                      </h3>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '14px', color: activeTierData.color, fontWeight: '600' }}>{job.employer_name}</span>
                         {job.job_city && <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>📍 {job.job_city}{job.job_country ? ', ' + job.job_country : ''}</span>}
@@ -530,15 +778,20 @@ ${resume}`
                       <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)' }}>{getPostedDate(job.job_posted_at_timestamp)}</span>
                       {job.job_min_salary && <span style={{ fontSize: '12px', color: '#4ade80' }}>💰 {job.job_min_salary}{job.job_max_salary ? ' - ' + job.job_max_salary : ''} {job.job_salary_currency || ''}</span>}
                     </div>
-                    <a href={job.job_apply_link} target="_blank" rel="noopener noreferrer" style={{ background: getBtnGradient(), color: getBtnColor(), border: 'none', padding: '10px 24px', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', textDecoration: 'none', display: 'inline-block' }}>
-                      Apply now
-                    </a>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => goToAnalysis(job, 'list')} style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.75)', border: '1px solid rgba(255,255,255,0.12)', padding: '10px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                        Analyse
+                      </button>
+                      <a href={job.job_apply_link} target="_blank" rel="noopener noreferrer" style={{ background: getBtnGradient(), color: getBtnColor(), border: 'none', padding: '10px 24px', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', textDecoration: 'none', display: 'inline-block' }}>
+                        Apply now
+                      </a>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <button onClick={() => { setJobs([]); setProfile(null); setSearched(false); setResumeText(''); setUploadedFileName('') }} style={{ width: '100%', padding: '14px', marginTop: '20px', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
+            <button onClick={() => { setJobs([]); setProfile(null); setSearched(false); setResumeText(''); setUploadedFileName(''); resetPicks() }} style={{ width: '100%', padding: '14px', marginTop: '20px', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
               Search with different resume
             </button>
           </div>

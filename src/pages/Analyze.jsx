@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { extractTextFromPDF } from '../pdfUtils'
 import genieIcon from '../assets/genie-icon.png'
 import { useAuth } from '../useAuth'
@@ -24,7 +24,23 @@ function Analyze() {
   const [activeTab, setActiveTab] = useState('keywords')
   const [uploadedFileName, setUploadedFileName] = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [fromJob, setFromJob] = useState(null)
   const { user, signOut } = useAuth()
+  const routerLocation = useLocation()
+
+  // Pre-fill resume + JD when coming from Job Finder ("Analyse this job")
+  useEffect(() => {
+    const s = routerLocation.state
+    if (!s) return
+    if (s.resumeText) {
+      setResumeText(s.resumeText)
+      setUploadedFileName('Resume from Job Finder')
+    }
+    if (s.jdText) setJdText(s.jdText)
+    if (s.jobTitle) setFromJob({ title: s.jobTitle, company: s.company, partial: !!s.jdPartial, link: s.applyLink })
+    // Clear the state so a page refresh doesn't keep re-filling old data
+    window.history.replaceState({}, document.title)
+  }, [])
 
   const handlePDFUpload = async (e) => {
     const file = e.target.files[0]
@@ -498,8 +514,13 @@ JOB DESCRIPTION: ${jdText}`
   }
   .page {
     width: 210mm;
-    padding: 18mm 18mm 28mm 18mm;
+    padding: 0 18mm;
   }
+  /* Top/bottom spacing repeated on every printed page (replaces @page margins) */
+  .print-frame { width: 100%; border-collapse: collapse; }
+  .print-frame td { padding: 0; }
+  .pf-top { height: 16mm; }
+  .pf-bottom { height: 16mm; }
   .name {
     text-align: center;
     font-size: 22pt;
@@ -585,18 +606,23 @@ JOB DESCRIPTION: ${jdText}`
     line-height: 1.45;
   }
   .bottom-spacer { height: 24mm; display: block; }
+  /* margin: 0 leaves no room for the browser's date / URL / page-number header & footer */
   @page {
     size: A4;
-    margin: 18mm 18mm 28mm 18mm;
+    margin: 0;
   }
   @media print {
     html, body { width: 210mm; }
-    .page { padding: 0; }
+    .page { padding: 0 18mm; }
     .exp-block { page-break-inside: avoid; }
   }
 </style>
 </head>
 <body>
+<table class="print-frame">
+<thead><tr><td><div class="pf-top"></div></td></tr></thead>
+<tfoot><tr><td><div class="pf-bottom"></div></td></tr></tfoot>
+<tbody><tr><td>
 <div class="page">
 
   <div class="name">${nameFmt}</div>
@@ -668,8 +694,9 @@ JOB DESCRIPTION: ${jdText}`
     : `<div class="skill-row">${(fullRewrite.skills || []).join('  •  ')}</div>`
   }` : ''}
 
-  <div class="bottom-spacer"></div>
 </div>
+</td></tr></tbody>
+</table>
 </body>
 </html>`
 
@@ -678,6 +705,124 @@ JOB DESCRIPTION: ${jdText}`
     printWindow.document.close()
     printWindow.focus()
     setTimeout(() => { printWindow.print() }, 600)
+  }
+
+
+  // ---------- Downloadable PDFs for Roadmap & Interview Prep ----------
+
+  const escapeHtml = (v) => String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+  const openPrintDoc = (title, bodyHtml) => {
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${escapeHtml(title)}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; color: #1a1a1a; background: #fff; }
+  @page { size: A4; margin: 0; }
+  .print-frame { width: 100%; border-collapse: collapse; }
+  .print-frame td { padding: 0; }
+  .pf-top, .pf-bottom { height: 15mm; }
+  .page { padding: 0 16mm; }
+  .brand { font-size: 8.5pt; color: #888; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+  h1 { font-size: 19pt; margin-bottom: 4px; color: #111; }
+  .sub { font-size: 10pt; color: #555; margin-bottom: 14px; }
+  .goal { background: #fff8db; border-left: 4px solid #e8a200; padding: 10px 12px; margin-bottom: 16px; font-size: 10.5pt; line-height: 1.5; }
+  h2 { font-size: 12.5pt; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1.5px solid #ddd; color: #111; break-after: avoid; page-break-after: avoid; }
+  h3 { font-size: 11pt; margin: 0 0 6px; color: #111; }
+  .muted { color: #666; font-size: 9.5pt; margin-bottom: 8px; }
+  ol, ul { padding-left: 18px; }
+  li { margin-bottom: 4px; line-height: 1.45; }
+  table.days { width: 100%; border-collapse: collapse; margin: 6px 0 8px; }
+  table.days th, table.days td { border: 1px solid #ddd; padding: 6px 8px; vertical-align: top; text-align: left; font-size: 9.5pt; line-height: 1.4; }
+  table.days th { background: #f4f4f4; font-weight: 700; }
+  .milestone { background: #eefaf1; border-left: 4px solid #22a55e; padding: 8px 10px; font-size: 9.5pt; margin-bottom: 6px; }
+  .block { page-break-inside: avoid; break-inside: avoid; margin-bottom: 12px; }
+  .q { border: 1px solid #e2e2e2; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; page-break-inside: avoid; break-inside: avoid; }
+  .q-title { font-weight: 700; font-size: 10.5pt; margin-bottom: 6px; }
+  .label { font-weight: 700; font-size: 8.5pt; letter-spacing: 0.5px; text-transform: uppercase; color: #555; margin-top: 6px; }
+  .text { font-size: 9.8pt; line-height: 1.45; }
+  .gap { border-color: #f3c2c2; background: #fff6f6; }
+  .final { border: 1.5px solid #e8a200; border-radius: 6px; padding: 10px 12px; margin-top: 14px; line-height: 1.5; }
+  .notes { border-top: 1px dashed #bbb; margin-top: 8px; height: 18mm; }
+</style>
+</head>
+<body>
+<table class="print-frame">
+<thead><tr><td><div class="pf-top"></div></td></tr></thead>
+<tfoot><tr><td><div class="pf-bottom"></div></td></tr></tfoot>
+<tbody><tr><td><div class="page">${bodyHtml}</div></td></tr></tbody>
+</table>
+</body>
+</html>`
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) { setError('Please allow pop-ups for this site to download the PDF.'); return }
+    printWindow.document.write(html)
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => { printWindow.print() }, 600)
+  }
+
+  const handleDownloadRoadmap = () => {
+    if (!roadmap) return
+    const e = escapeHtml
+    const role = roadmap.targetRole || 'Target role'
+    const body = `
+      <div class="brand">Career Genie · 4-Week Roadmap</div>
+      <h1>${e(role)}</h1>
+      <div class="sub">${roadmap.candidateName ? `Prepared for ${e(roadmap.candidateName)} · ` : ''}${e(new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }))}</div>
+      ${roadmap.overallGoal ? `<div class="goal"><b>Goal:</b> ${e(roadmap.overallGoal)}</div>` : ''}
+      ${(roadmap.quickWins || []).length ? `
+        <h2>Do these today</h2>
+        <ol>${roadmap.quickWins.map(w => `<li>${e(w)}</li>`).join('')}</ol>` : ''}
+      ${(roadmap.weeks || []).map(week => `
+        <div class="block">
+          <h2>Week ${e(week.week)} — ${e(week.theme)}</h2>
+          ${week.goal ? `<div class="muted">${e(week.goal)}</div>` : ''}
+          <table class="days">
+            <tr><th style="width:16%">When</th><th style="width:38%">Task</th><th style="width:24%">Free resource</th><th style="width:22%">Outcome</th></tr>
+            ${(week.days || []).map(d => `<tr><td><b>${e(d.day)}</b></td><td>${e(d.task)}</td><td>${e(d.resource)}</td><td>${e(d.outcome)}</td></tr>`).join('')}
+          </table>
+          ${week.weeklyMilestone ? `<div class="milestone"><b>Milestone:</b> ${e(week.weeklyMilestone)}</div>` : ''}
+        </div>`).join('')}
+      ${roadmap.finalOutcome ? `<div class="final"><b>After 4 weeks you will have:</b> ${e(roadmap.finalOutcome)}</div>` : ''}
+    `
+    const name = roadmap.candidateName ? `${roadmap.candidateName} — ` : ''
+    openPrintDoc(`${name}Roadmap — ${role}`, body)
+    if (user) trackEvent(user.id, 'download_roadmap', {})
+  }
+
+  const handleDownloadInterview = () => {
+    if (!interview) return
+    const e = escapeHtml
+    const role = interview.role || 'Target role'
+    const body = `
+      <div class="brand">Career Genie · Interview Prep</div>
+      <h1>${e(role)}</h1>
+      <div class="sub">Likely interview questions · ${e(new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }))}</div>
+      ${(interview.categories || []).map(cat => `
+        <h2>${e(cat.name)}</h2>
+        ${(cat.questions || []).map((q, i) => `
+          <div class="q">
+            <div class="q-title">Q${i + 1}. ${e(q.question)}</div>
+            <div class="label">Why they ask this</div><div class="text">${e(q.why)}</div>
+            <div class="label">How to answer</div><div class="text">${e(q.tip)}</div>
+            <div class="label">Sample structure</div><div class="text">${e(q.sampleAnswer)}</div>
+            <div class="label">My answer notes</div><div class="notes"></div>
+          </div>`).join('')}`).join('')}
+      ${(interview.gapQuestions || []).length ? `
+        <h2>Tough questions — gaps in your profile</h2>
+        ${interview.gapQuestions.map(q => `
+          <div class="q gap">
+            <div class="q-title">${e(q.question)}</div>
+            <div class="label">How to handle</div><div class="text">${e(q.how)}</div>
+          </div>`).join('')}` : ''}
+    `
+    openPrintDoc(`Interview Prep — ${role}`, body)
+    if (user) trackEvent(user.id, 'download_interview', {})
   }
 
   const scoreColor = (val) => val >= 75 ? '#22c55e' : val >= 50 ? '#f5c518' : '#ef4444'
@@ -778,6 +923,32 @@ JOB DESCRIPTION: ${jdText}`
             )}
           </div>
         </div>
+
+        {/* Loaded from Job Finder banner */}
+        {fromJob && !results && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.25)', borderRadius: '14px', padding: '14px 18px', marginBottom: '16px' }}>
+            <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.5' }}>
+              ⭐ Loaded from Job Finder: <b style={{ color: '#fff' }}>{fromJob.title}</b>{fromJob.company ? <> at <b style={{ color: '#a78bfa' }}>{fromJob.company}</b></> : null}. Your resume and the job description are filled in.{fromJob.partial ? '' : ' Just hit analyse.'}
+            </div>
+            <button onClick={() => navigate('/jobs')} style={{ background: 'transparent', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.3)', padding: '8px 14px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              ← Back to jobs
+            </button>
+          </div>
+        )}
+
+        {/* Partial JD warning — some job sources only give a preview */}
+        {fromJob?.partial && !results && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '14px', padding: '14px 18px', marginBottom: '16px' }}>
+            <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.75)', lineHeight: '1.5', flex: 1, minWidth: '240px' }}>
+              ⚠️ <b style={{ color: '#fb923c' }}>Only a preview of this job description was available.</b> For an accurate ATS and match score, open the job, copy the full description and paste it into the job description box (replace what's there).
+            </div>
+            {fromJob.link && (
+              <a href={fromJob.link} target="_blank" rel="noopener noreferrer" style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)', color: '#fff', padding: '8px 16px', borderRadius: '9px', fontSize: '13px', fontWeight: '800', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                Open full job ↗
+              </a>
+            )}
+          </div>
+        )}
 
         {/* Input Grid */}
         <div className="analyze-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
@@ -1020,9 +1191,12 @@ JOB DESCRIPTION: ${jdText}`
               {activeTab === 'roadmap' && roadmap && (
                 <div>
                   <div style={{ marginBottom: '28px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f5c518' }} />
-                      <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#fff', margin: 0 }}>Your personalised 4 week roadmap</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f5c518' }} />
+                        <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#fff', margin: 0 }}>Your personalised 4 week roadmap</h3>
+                      </div>
+                      <button onClick={handleDownloadRoadmap} style={{ background: 'rgba(245,197,24,0.1)', color: '#f5c518', border: '1px solid rgba(245,197,24,0.3)', padding: '8px 16px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>⬇ Download PDF</button>
                     </div>
                     <div style={{ background: 'rgba(245,197,24,0.08)', border: '1px solid rgba(245,197,24,0.2)', borderRadius: '12px', padding: '14px 18px' }}>
                       <div style={{ fontSize: '12px', color: '#f5c518', fontWeight: '700', marginBottom: '4px' }}>🎯 YOUR GOAL</div>
@@ -1084,9 +1258,12 @@ JOB DESCRIPTION: ${jdText}`
 
               {activeTab === 'interview' && interview && (
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e' }} />
-                    <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#fff', margin: 0 }}>Likely interview questions for {interview.role}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e' }} />
+                      <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#fff', margin: 0 }}>Likely interview questions for {interview.role}</h3>
+                    </div>
+                    <button onClick={handleDownloadInterview} style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)', padding: '8px 16px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>⬇ Download PDF</button>
                   </div>
                   {(interview.categories || []).map((cat, ci) => (
                     <div key={ci} style={{ marginBottom: '28px' }}>
