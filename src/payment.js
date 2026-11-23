@@ -1,3 +1,4 @@
+// Amounts here must match TIER_AMOUNT in api/jobs.js — the server rejects payments of the wrong amount.
 export const PLANS = {
   FRESHER_SEARCH: {
     amount: 1900,
@@ -16,12 +17,14 @@ export const PLANS = {
   MNC_SEARCH: {
     amount: 3900,
     currency: 'INR',
-    name: 'Direct Search',
-    description: 'Straight from company career pages — freshest listings, no middleman',
+    name: 'Global Search',
+    description: 'Jobs abroad and remote roles — most overseas jobs need a work visa',
     price: '₹39'
   }
 }
 
+// VITE_RAZORPAY_KEY_ID is the *public* key — it's meant to be in the browser.
+// The secret key lives only on the server (RAZORPAY_KEY_SECRET).
 export function openRazorpay({ plan, user, onSuccess, onFailure }) {
   const options = {
     key: import.meta.env.VITE_RAZORPAY_KEY_ID,
@@ -30,6 +33,7 @@ export function openRazorpay({ plan, user, onSuccess, onFailure }) {
     name: 'Career Genie',
     description: plan.description,
     handler: function (response) {
+      // response.razorpay_payment_id is sent to /api/jobs, which verifies it with Razorpay
       onSuccess(response)
     },
     prefill: {
@@ -37,7 +41,8 @@ export function openRazorpay({ plan, user, onSuccess, onFailure }) {
       name: user?.user_metadata?.full_name || '',
       contact: ''
     },
-    notes: { feature: plan.name },
+    // user_id lets the server confirm the payment belongs to the signed-in user
+    notes: { feature: plan.name, user_id: user?.id || '' },
     theme: { color: '#f5c518' },
     modal: {
       ondismiss: function () {

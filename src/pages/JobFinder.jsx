@@ -5,6 +5,7 @@ import genieIcon from '../assets/genie-icon.png'
 import { useAuth } from '../useAuth'
 import { openRazorpay, PLANS } from '../payment'
 import { trackEvent, trackApiCall } from '../Analytics'
+import { callAI, searchJobs } from '../api'
 
 // Keeps the last paid search in this browser tab, so going to "Analyse this job"
 // and coming back doesn't wipe the results the user paid for.
@@ -29,6 +30,7 @@ function JobFinder() {
   const [topPicks, setTopPicks] = useState(saved?.topPicks || null)
   const [picksNote, setPicksNote] = useState(saved?.picksNote || '')
   const [ranking, setRanking] = useState(false)
+  const [lastPaymentId, setLastPaymentId] = useState(saved?.lastPaymentId || '')
   const { user, signOut } = useAuth()
 
   const resetPicks = () => { setTopPicks(null); setPicksNote(''); setRanking(false) }
@@ -36,12 +38,12 @@ function JobFinder() {
   useEffect(() => {
     try {
       if (jobs.length > 0) {
-        sessionStorage.setItem(SAVED_KEY, JSON.stringify({ jobs, profile, topPicks, picksNote, activeTier, resumeText, uploadedFileName, location }))
+        sessionStorage.setItem(SAVED_KEY, JSON.stringify({ jobs, profile, topPicks, picksNote, activeTier, resumeText, uploadedFileName, location, lastPaymentId }))
       } else {
         sessionStorage.removeItem(SAVED_KEY)
       }
     } catch { /* storage unavailable — results just won't persist */ }
-  }, [jobs, profile, topPicks, picksNote, activeTier, resumeText, uploadedFileName, location])
+  }, [jobs, profile, topPicks, picksNote, activeTier, resumeText, uploadedFileName, location, lastPaymentId])
 
   const tiers = [
     {
@@ -122,100 +124,15 @@ function JobFinder() {
 RESUME:
 ${resume}`
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'openai/gpt-oss-120b',
-        messages: [
+    const raw = await callAI([
           { role: 'system', content: 'You are a resume parser. Extract structured profile data. Always return valid JSON only.' },
           { role: 'user', content: prompt }
-        ],
-        temperature: 0.2
-      })
-    })
-
-    const data = await response.json()
-    const raw = data.choices[0].message.content
+        ], 0.2)
     const clean = raw.replace(/```json|```/g, '').trim()
     return JSON.parse(clean)
   }
 
-  const searchAdzuna = async (profile, locationQuery) => {
-    const loc = locationQuery || 'india'
-    const query = encodeURIComponent(profile.searchQuery || profile.currentRole)
-    const appId = import.meta.env.VITE_ADZUNA_APP_ID
-    const appKey = import.meta.env.VITE_ADZUNA_APP_KEY
-    const url = `https://api.adzuna.com/v1/api/jobs/in/search/1?app_id=${appId}&app_key=${appKey}&results_per_page=20&what=${query}&where=${encodeURIComponent(loc)}&content-type=application/json`
-    const response = await fetch(url)
-    const data = await response.json()
-    return (data.results || []).map(job => ({
-      job_title: job.title,
-      employer_name: job.company?.display_name || 'Company',
-      employer_logo: null,
-      job_city: job.location?.display_name || loc,
-      job_country: 'India',
-      job_is_remote: job.title?.toLowerCase().includes('remote') || false,
-      job_employment_type: job.contract_time || 'Full Time',
-      job_description: job.description || '',
-      job_apply_link: job.redirect_url,
-      job_posted_at_timestamp: job.created ? new Date(job.created).getTime() / 1000 : null,
-      job_min_salary: job.salary_min ? Math.round(job.salary_min) : null,
-      job_max_salary: job.salary_max ? Math.round(job.salary_max) : null,
-      job_salary_currency: '₹',
-      source: 'Adzuna'
-    }))
-  }
-
-  const searchJSearch = async (profile, locationQuery) => {
-    const searchQuery = `${profile.searchQuery} jobs in ${locationQuery}`
-    const url = `https://jsearch.p.rapidapi.com/search-v2?query=${encodeURIComponent(searchQuery)}&page=1&num_pages=2&country=in`
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'X-RapidAPI-Key': import.meta.env.VITE_JSEARCH_API_KEY,
-        'X-RapidAPI-Host': 'jsearch.p.rapidapi.com'
-      }
-    })
-    const data = await response.json()
-    if (data.data && data.data.jobs && Array.isArray(data.data.jobs)) return data.data.jobs
-    if (data.data && Array.isArray(data.data)) return data.data
-    if (data.jobs && Array.isArray(data.jobs)) return data.jobs
-    return []
-  }
-
-  const searchJobsPipe = async (profile) => {
-    const response = await fetch('https://api.jobspipe.dev/v1/jobs/search', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${import.meta.env.VITE_JOBSPIPE_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        job_title_or: [profile.searchQuery],
-        limit: 20
-      })
-    })
-    const data = await response.json()
-    return (data.jobs || data.data || []).map(job => ({
-      job_title: job.title || job.job_title,
-      employer_name: job.company || job.employer_name,
-      employer_logo: job.company_logo || job.employer_logo,
-      job_city: job.location || job.job_city,
-      job_country: job.country || job.job_country,
-      job_is_remote: job.remote || job.job_is_remote,
-      job_employment_type: job.employment_type || job.job_employment_type,
-      job_description: job.description || job.job_description,
-      job_apply_link: job.apply_url || job.job_apply_link || job.url,
-      job_posted_at_timestamp: job.posted_at ? new Date(job.posted_at).getTime() / 1000 : null,
-      job_min_salary: job.salary_min || job.min_salary,
-      job_max_salary: job.salary_max || job.max_salary,
-      source: 'JobsPipe'
-    }))
-  }
+  // Job provider calls (Adzuna / JSearch / JobsPipe) now run on the server: api/jobs.js
 
   // ---------- Helpers for Top 3 picks ----------
 
@@ -281,24 +198,10 @@ ${globalRule}
 Return ONLY valid JSON, no markdown:
 {"picks":[{"index":<number>,"fit":"Strong match" or "Good match","reasons":["<fact-based reason>","<fact-based reason>"],"watch_out":"<one honest gap or risk, or empty string>"}],"note":"<one short line, or empty string>"}`
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'openai/gpt-oss-120b',
-        messages: [
+    const raw = await callAI([
           { role: 'system', content: 'You rank job listings for a candidate. You only state facts found in the provided resume and job descriptions. Always return valid JSON only.' },
           { role: 'user', content: prompt }
-        ],
-        temperature: 0.2
-      })
-    })
-
-    const data = await response.json()
-    const raw = data.choices[0].message.content
+        ], 0.2)
     const jsonText = raw.replace(/```json|```/g, '').match(/\{[\s\S]*\}/)?.[0] || '{}'
     const parsed = JSON.parse(jsonText)
 
@@ -338,7 +241,7 @@ Return ONLY valid JSON, no markdown:
     })
   }
 
-  const runJobSearch = async (tier) => {
+  const runJobSearch = async (tier, paymentId) => {
     setLoading(true)
     setJobs([])
     setProfile(null)
@@ -349,22 +252,14 @@ Return ONLY valid JSON, no markdown:
     try {
       const extractedProfile = await extractProfileFromResume(resumeText)
       setProfile(extractedProfile)
-      const locationQuery = location || 'India'
-      let jobResults = []
-
-      if (tier === 'broad') {
-        jobResults = await searchAdzuna(extractedProfile, locationQuery)
-        if (jobResults.length === 0) {
-          jobResults = await searchAdzuna({ ...extractedProfile, searchQuery: extractedProfile.currentRole }, locationQuery)
-        }
-      } else if (tier === 'smart') {
-        jobResults = await searchJSearch(extractedProfile, locationQuery)
-        if (jobResults.length === 0) {
-          jobResults = await searchJSearch(extractedProfile, 'India')
-        }
-      } else if (tier === 'direct') {
-        jobResults = await searchJobsPipe(extractedProfile)
-      }
+      // Server verifies the Razorpay payment before searching (api/jobs.js)
+      const jobResults = await searchJobs({
+        tier,
+        searchQuery: extractedProfile.searchQuery,
+        currentRole: extractedProfile.currentRole,
+        location: location || 'India',
+        paymentId
+      })
 
       const finalJobs = dedupeJobs(jobResults).slice(0, 15)
       setJobs(finalJobs)
@@ -392,7 +287,7 @@ Return ONLY valid JSON, no markdown:
       }
 
     } catch (err) {
-      setError('Something went wrong. Please try again.')
+      setError(err.message && !err.message.startsWith('Request failed') ? err.message : 'Something went wrong. Please try again.')
       console.error(err)
       setSearched(true)
     } finally {
@@ -418,12 +313,14 @@ Return ONLY valid JSON, no markdown:
     openRazorpay({
       plan,
       user,
-      onSuccess: async () => {
+      onSuccess: async (response) => {
+        const paymentId = response?.razorpay_payment_id
+        setLastPaymentId(paymentId)
         await trackEvent(user.id, 'payment_job_search', {
-        tier: activeTier,
-        amount: plan.amount / 100
-       })
-       await runJobSearch(activeTier)
+          tier: activeTier,
+          amount: plan.amount / 100
+        })
+        await runJobSearch(activeTier, paymentId)
       },
       onFailure: () => {
         setError('Payment cancelled. Please try again.')
@@ -641,7 +538,7 @@ Return ONLY valid JSON, no markdown:
               Try a different location or switch to another search type.
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button onClick={() => { setSearched(false); setError(''); runJobSearch(activeTier) }} style={{ background: getBtnGradient(), color: getBtnColor(), border: 'none', padding: '12px 28px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
+              <button onClick={() => { setSearched(false); setError(''); runJobSearch(activeTier, lastPaymentId) }} style={{ background: getBtnGradient(), color: getBtnColor(), border: 'none', padding: '12px 28px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
                 🔄 Retry — free
               </button>
               <button onClick={() => { setSearched(false); setProfile(null); setResumeText(''); setUploadedFileName(''); setLocation(''); resetPicks() }} style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)', padding: '12px 28px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>

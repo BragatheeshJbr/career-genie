@@ -5,6 +5,7 @@ import genieIcon from '../assets/genie-icon.png'
 import { useAuth } from '../useAuth'
 import { supabase } from '../supabase'
 import { trackEvent, trackApiCall } from '../Analytics'
+import { callAI } from '../api'
 
 function Analyze() {
   const navigate = useNavigate()
@@ -172,24 +173,10 @@ ${resumeText}
 JOB DESCRIPTION:
 ${jdText}`
 
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'openai/gpt-oss-120b',
-          messages: [
+      const raw = await callAI([
             { role: 'system', content: 'You are Career Genie, an expert AI resume coach for Indian students. Always return valid JSON only.' },
             { role: 'user', content: prompt }
-          ],
-          temperature: 0.3
-        })
-      })
-
-      const data = await response.json()
-      const raw = data.choices[0].message.content
+          ], 0.3)
       const clean = raw.replace(/```json|```/g, '').trim()
       const parsed = JSON.parse(clean)
       setResults(parsed)
@@ -268,24 +255,10 @@ ${resumeText}
 JOB DESCRIPTION:
 ${jdText}`
 
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'openai/gpt-oss-120b',
-          messages: [
+      const raw = await callAI([
             { role: 'system', content: 'You are Career Genie, an expert resume writer. Always return valid JSON only.' },
             { role: 'user', content: prompt }
-          ],
-          temperature: 0.4
-        })
-      })
-
-      const data = await response.json()
-      const raw = data.choices[0].message.content
+          ], 0.4)
       const clean = raw.replace(/```json|```/g, '').trim()
       setFullRewrite(JSON.parse(clean))
       setActiveTab('fullrewrite')
@@ -337,24 +310,10 @@ RESUME: ${resumeText}
 JOB DESCRIPTION: ${jdText}
 MISSING KEYWORDS: ${results?.missingKeywords?.join(', ')}`
 
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'openai/gpt-oss-120b',
-          messages: [
+      const raw = await callAI([
             { role: 'system', content: 'You are Career Genie, an expert career coach. Always return valid JSON only.' },
             { role: 'user', content: prompt }
-          ],
-          temperature: 0.4
-        })
-      })
-
-      const data = await response.json()
-      const raw = data.choices[0].message.content
+          ], 0.4)
       const clean = raw.replace(/```json|```/g, '').trim()
       setRoadmap(JSON.parse(clean))
       setActiveTab('roadmap')
@@ -400,24 +359,10 @@ RESUME: ${resumeText}
 JOB DESCRIPTION: ${jdText}
 MISSING KEYWORDS: ${results?.missingKeywords?.join(', ')}`
 
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'openai/gpt-oss-120b',
-          messages: [
+      const raw = await callAI([
             { role: 'system', content: 'You are Career Genie, an expert interview coach. Always return valid JSON only.' },
             { role: 'user', content: prompt }
-          ],
-          temperature: 0.4
-        })
-      })
-
-      const data = await response.json()
-      const raw = data.choices[0].message.content
+          ], 0.4)
       const clean = raw.replace(/```json|```/g, '').trim()
       setInterview(JSON.parse(clean))
       setActiveTab('interview')
@@ -450,24 +395,10 @@ MISSING KEYWORDS: ${results?.missingKeywords?.join(', ')}`
 RESUME: ${resumeText}
 JOB DESCRIPTION: ${jdText}`
 
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'openai/gpt-oss-120b',
-          messages: [
+      const raw = await callAI([
             { role: 'system', content: 'You are Career Genie, an expert career writer. Always return valid JSON only.' },
             { role: 'user', content: prompt }
-          ],
-          temperature: 0.5
-        })
-      })
-
-      const data = await response.json()
-      const raw = data.choices[0].message.content
+          ], 0.5)
       const clean = raw.replace(/```json|```/g, '').trim()
       setCoverLetter(JSON.parse(clean))
       setActiveTab('cover')
