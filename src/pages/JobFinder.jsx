@@ -52,11 +52,11 @@ function JobFinder() {
       icon: '🌐',
       price: '₹19',
       priceNote: 'per search',
-      description: 'Cast the widest net — thousands of job boards aggregated into one search',
+      description: 'Cast the widest net — many job boards combined into one search',
       color: '#22c55e',
       bgColor: 'rgba(34,197,94,0.08)',
       borderColor: 'rgba(34,197,94,0.25)',
-      tags: ['Adzuna', 'Thousands of boards', 'Wide coverage'],
+      tags: ['Adzuna', 'Many job boards', 'Wide coverage'],
       paid: true,
       plan: 'FRESHER_SEARCH'
     },
@@ -456,10 +456,10 @@ Return ONLY valid JSON, no markdown:
                 {activeTier === 'broad' ? '🌐 BROAD SEARCH' : activeTier === 'smart' ? '🔍 SMART SEARCH' : '🌍 GLOBAL SEARCH'}
               </div>
               {activeTier === 'broad' && [
-                { icon: '🌐', text: 'Thousands of job boards in one search' },
+                { icon: '🌐', text: 'Many job boards in one search' },
                 { icon: '📍', text: 'Location based filtering' },
-                { icon: '💰', text: 'Salary data included' },
                 { icon: '⚡', text: 'Fast results — widest coverage' },
+                { icon: '⭐', text: 'Top 3 picks for your profile, with reasons' },
               ].map((s, i) => (
                 <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '10px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', alignItems: 'flex-start' }}>
                   <span>{s.icon}</span><span>{s.text}</span>
@@ -469,7 +469,7 @@ Return ONLY valid JSON, no markdown:
                 { icon: '🔍', text: 'Powered by Google for Jobs India' },
                 { icon: '🎯', text: 'Naukri, LinkedIn, Indeed, Internshala' },
                 { icon: '📍', text: 'Location based filtering' },
-                { icon: '💰', text: 'Salary data included' },
+                { icon: '⭐', text: 'Top 3 picks for your profile, with reasons' },
               ].map((s, i) => (
                 <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '10px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', alignItems: 'flex-start' }}>
                   <span>{s.icon}</span><span>{s.text}</span>
@@ -479,7 +479,7 @@ Return ONLY valid JSON, no markdown:
                 { icon: '🌍', text: 'Jobs abroad and remote roles' },
                 { icon: '✈️', text: 'Most overseas jobs need a work visa — employers rarely sponsor freshers' },
                 { icon: '🏠', text: 'Best bets: remote roles open to India' },
-                { icon: '📋', text: 'Full job descriptions, duplicates removed' },
+                { icon: '⭐', text: 'Top 3 picks for your profile, with reasons' },
               ].map((s, i) => (
                 <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '10px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', alignItems: 'flex-start' }}>
                   <span>{s.icon}</span><span>{s.text}</span>

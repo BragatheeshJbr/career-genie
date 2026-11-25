@@ -4,7 +4,7 @@ export const PLANS = {
     amount: 1900,
     currency: 'INR',
     name: 'Broad Search',
-    description: 'Cast the widest net — search across thousands of job boards',
+    description: 'Cast the widest net — search across many job boards',
     price: '₹19'
   },
   INDIA_SEARCH: {

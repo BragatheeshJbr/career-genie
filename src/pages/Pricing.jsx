@@ -39,12 +39,11 @@ function Pricing() {
       features: [
         { text: 'Everything in Free', included: true },
         { text: 'Widest job coverage', included: true },
-        { text: 'Thousands of job boards', included: true },
+        { text: 'Many job boards in one search', included: true },
         { text: 'Location based filtering', included: true },
-        { text: 'Salary data included', included: true },
+        { text: 'Top 3 picks for your profile, with reasons', included: true },
         { text: 'Pay per search — no subscription', included: true },
         { text: 'Google for Jobs India', included: false },
-        { text: 'Direct ATS access', included: false },
       ],
       cta: 'Try Broad Search — ₹19',
       ctaAction: () => navigate('/jobs')
@@ -61,32 +60,29 @@ function Pricing() {
         { text: 'Google for Jobs India', included: true },
         { text: 'Naukri, LinkedIn, Indeed, Internshala', included: true },
         { text: 'Location based filtering', included: true },
-        { text: 'Salary data included', included: true },
+        { text: 'Top 3 picks for your profile, with reasons', included: true },
         { text: 'Pay per search — no subscription', included: true },
         { text: 'Best Indian job coverage', included: true },
-        { text: 'Direct ATS access', included: false },
       ],
       cta: 'Try Smart Search — ₹29',
       ctaAction: () => navigate('/jobs')
     },
     {
-      name: 'Direct Search',
+      name: 'Global Search',
       price: '₹39',
       sub: 'per search',
-      badge: 'BEST QUALITY',
+      badge: 'ABROAD & REMOTE',
       color: '#a78bfa',
       highlight: false,
       features: [
         { text: 'Everything in Free', included: true },
-        { text: 'Direct from company career pages', included: true },
-        { text: 'Freshest listings — no middleman', included: true },
-        { text: 'Workday, Greenhouse, Lever + more', included: true },
-        { text: 'Cross source deduplication', included: true },
-        { text: 'Full job descriptions', included: true },
+        { text: 'Jobs abroad and remote roles', included: true },
+        { text: 'Best bets: remote roles open to India', included: true },
+        { text: 'Top 3 picks for your profile, with reasons', included: true },
         { text: 'Pay per search — no subscription', included: true },
-        { text: 'Best data quality', included: true },
+        { text: 'Most overseas jobs need a work visa', included: false },
       ],
-      cta: 'Try Direct Search — ₹39',
+      cta: 'Try Global Search — ₹39',
       ctaAction: () => navigate('/jobs')
     },
   ]
@@ -241,9 +237,9 @@ function Pricing() {
             Job search APIs have real costs — each query costs us money. We charge a small per-search fee to cover this and keep everything else completely free.
           </p>
           {[
-            { icon: '🌐', name: 'Broad Search — ₹19', desc: 'Powered by Adzuna — thousands of job boards in one search. Widest coverage, good for exploring.', color: '#22c55e' },
-            { icon: '🔍', name: 'Smart Search — ₹29', desc: 'Powered by Google for Jobs India — Naukri, LinkedIn, Indeed, Internshala in one query. Best for Indian market.', color: '#f5c518' },
-            { icon: '🎯', name: 'Direct Search — ₹39', desc: 'Powered by JobsPipe — reads directly from company career pages. Freshest data, no duplicates, highest quality.', color: '#a78bfa' },
+            { icon: '🌐', name: 'Broad Search — ₹19', desc: 'Many job boards in one search. Widest coverage, good for exploring what is out there.', color: '#22c55e' },
+            { icon: '🔍', name: 'Smart Search — ₹29', desc: 'Powered by Google for Jobs India — Naukri, LinkedIn, Indeed, Internshala in one query. Fresh listings with full job descriptions, best for the Indian market.', color: '#f5c518' },
+            { icon: '🌍', name: 'Global Search — ₹39', desc: 'Jobs abroad and remote roles. Most overseas jobs need a work visa and employers rarely sponsor freshers, so this suits experienced candidates or remote roles open to India.', color: '#a78bfa' },
           ].map((item, i) => (
             <div key={i} style={{ display: 'flex', gap: '14px', alignItems: 'flex-start', padding: '14px 0', borderBottom: i < 2 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
               <span style={{ fontSize: '20px', flexShrink: 0 }}>{item.icon}</span>
@@ -261,8 +257,8 @@ function Pricing() {
           {[
             { q: 'Do I need to create an account?', a: 'Yes — sign in is required for all features. This helps us track your daily usage limit and save your analysis history.' },
             { q: 'What is included in the free plan?', a: 'Everything in the Analyze section — match score, ATS audit, keyword gap, AI rewrite, full resume rewrite, PDF download, 4 week roadmap, interview prep and cover letter. All free, 3 times a day.' },
-            { q: 'What is the difference between the three job search tiers?', a: 'Broad casts the widest net across thousands of boards. Smart uses Google for Jobs India for best local coverage. Direct goes straight to company career pages for the freshest listings.' },
-            { q: 'Can I use the same search again if no jobs are found?', a: 'Yes — retry is always free. You only pay for the initial search. If we find no results you can retry without paying again.' },
+            { q: 'What is the difference between the three job search tiers?', a: 'Broad casts the widest net across many job boards. Smart uses Google for Jobs India for the best local coverage. Global shows jobs abroad and remote roles. Every search shows your Top 3 picks with reasons.' },
+            { q: 'Can I use the same search again if no jobs are found?', a: 'Yes. If a paid search finds no jobs or fails, you can retry for free up to 2 times within 2 hours of paying.' },
             { q: 'What payment methods are accepted?', a: 'UPI (GPay, PhonePe, Paytm), debit cards, credit cards and netbanking — all via Razorpay.' },
           ].map((faq, i, arr) => (
             <div key={i} style={{ padding: '16px 0', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
